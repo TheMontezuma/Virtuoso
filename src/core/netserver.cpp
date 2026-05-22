@@ -29,6 +29,67 @@ AsyncWebServer webserver(80);
 AsyncWebSocket websocket("/ws");
 AsyncUDP udp;
 
+static const uint8_t kWsClientSlots = 16;
+static uint32_t wsClientIds[kWsClientSlots] = {0};
+static bool wsClientTelemetry[kWsClientSlots] = {false};
+static bool wsTelemetryDefault = false;
+
+static int wsClientFindSlot(uint32_t id) {
+  if (id == 0) return -1;
+  for (int i = 0; i < kWsClientSlots; i++) {
+    if (wsClientIds[i] == id) return i;
+  }
+  return -1;
+}
+
+static int wsClientFindFreeSlot() {
+  for (int i = 0; i < kWsClientSlots; i++) {
+    if (wsClientIds[i] == 0) return i;
+  }
+  return -1;
+}
+
+static void wsClientOnConnect(uint32_t id) {
+  int s = wsClientFindSlot(id);
+  if (s < 0) s = wsClientFindFreeSlot();
+  if (s < 0) return;
+  wsClientIds[s] = id;
+  wsClientTelemetry[s] = wsTelemetryDefault;
+}
+
+static void wsClientOnDisconnect(uint32_t id) {
+  int s = wsClientFindSlot(id);
+  if (s < 0) return;
+  wsClientIds[s] = 0;
+  wsClientTelemetry[s] = false;
+}
+
+static void wsClientSetTelemetry(uint32_t id, bool enabled) {
+  int s = wsClientFindSlot(id);
+  if (s < 0) return;
+  wsClientTelemetry[s] = enabled;
+  wsTelemetryDefault = enabled;
+}
+
+static bool wsClientTelemetryEnabled(uint32_t id) {
+  int s = wsClientFindSlot(id);
+  if (s < 0) return false;
+  return wsClientTelemetry[s];
+}
+
+static bool wsAnyTelemetryEnabled() {
+  for (int i = 0; i < kWsClientSlots; i++) {
+    if (wsClientIds[i] != 0 && wsClientTelemetry[i]) return true;
+  }
+  return false;
+}
+
+static void wsTextTelemetryAll(const char* msg) {
+  for (int i = 0; i < kWsClientSlots; i++) {
+    if (wsClientIds[i] != 0 && wsClientTelemetry[i]) websocket.text(wsClientIds[i], msg);
+  }
+}
+
 String processor(const String& var);
 void handleUpload(AsyncWebServerRequest *request, String filename, size_t index, uint8_t *data, size_t len, bool final);
 void handleUploadWeb(AsyncWebServerRequest *request, String filename, size_t index, uint8_t *data, size_t len, bool final);
@@ -50,7 +111,7 @@ void mqttplaylistSend() {
 
 char* updateError() {
   static char ret[140] = {0};
-  sprintf(ret, "Update failed with error (%d)<br /> %s", (int)Update.getError(), Update.errorString());
+  snprintf(ret, sizeof(ret), "Aktualizacja nie powiodła się (błąd %d)<br /> %s", (int)Update.getError(), Update.errorString());
   return ret;
 }
 
@@ -92,6 +153,33 @@ bool NetServer::begin(bool quiet) {
   webserver.on("/update", HTTP_POST, beginUpdate, handleUpdate);
   webserver.on("/settings", HTTP_GET, handleHTTPArgs);
   if (IR_PIN != 255) webserver.on("/ir", HTTP_GET, handleHTTPArgs);
+  webserver.on("/api/i2c", HTTP_GET, [](AsyncWebServerRequest *request) {
+    char buf[48];
+    snprintf(buf, sizeof(buf), "{\"i2c_hz\":%u}", (unsigned)I2C_FREQ_HZ);
+    AsyncWebServerResponse *response = request->beginResponse(200, "application/json", buf);
+    response->addHeader("Cache-Control", "no-store");
+    request->send(response);
+  });
+  webserver.on("/api/dstauto", HTTP_ANY, [](AsyncWebServerRequest *request) {
+    if(request->hasParam("en")) {
+      bool enabled = request->getParam("en")->value().toInt() != 0;
+      config.setDstAutoEU(enabled);
+      if(!enabled) config.setTimezoneOffset(0);
+      network.applyTimezone(true);
+      if(getLocalTime(&network.timeinfo)){
+        mktime(&network.timeinfo);
+        display.putRequest(CLOCK);
+        #if RTCSUPPORTED
+          if (config.isRTCFound()) rtc.setTime(&network.timeinfo);
+        #endif
+      }
+    }
+    char buf[32];
+    snprintf(buf, sizeof(buf), "{\"dstauto\":%d}", config.getDstAutoEU() ? 1 : 0);
+    AsyncWebServerResponse *response = request->beginResponse(200, "application/json", buf);
+    response->addHeader("Cache-Control", "no-store");
+    request->send(response);
+  });
   webserver.serveStatic("/", SPIFFS, "/www/").setCacheControl("max-age=31536000");
 #ifdef CORS_DEBUG
   DefaultHeaders::Instance().addHeader(F("Access-Control-Allow-Origin"), F("*"));
@@ -110,7 +198,7 @@ bool NetServer::begin(bool quiet) {
         packet.println(WiFi.localIP());
     });
   }
-  if(!quiet) Serial.println("done");
+  if(!quiet) Serial.println("gotowe");
   return true;
 }
 
@@ -124,7 +212,7 @@ void NetServer::beginUpdate(AsyncWebServerRequest *request) {
 void handleUpdate(AsyncWebServerRequest *request, String filename, size_t index, uint8_t *data, size_t len, bool final) {
   if (!index) {
     int target = (request->getParam("updatetarget", true)->value() == "spiffs") ? U_SPIFFS : U_FLASH;
-    Serial.printf("Update Start: %s\n", filename.c_str());
+    Serial.printf("Start aktualizacji: %s\n", filename.c_str());
     player.sendCommand({PR_STOP, 0});
     display.putRequest(NEWMODE, UPDATING);
     if (!Update.begin(UPDATE_SIZE_UNKNOWN, target)) {
@@ -140,7 +228,7 @@ void handleUpdate(AsyncWebServerRequest *request, String filename, size_t index,
   }
   if (final) {
     if (Update.end(true)) {
-      Serial.printf("Update Success: %uB\n", index + len);
+      Serial.printf("Aktualizacja zakończona: %uB\n", index + len);
     } else {
       Update.printError(Serial);
       request->send(200, "text/html", updateError());
@@ -178,10 +266,10 @@ size_t NetServer::chunkedHtmlPageCallback(uint8_t* buffer, size_t maxLen, size_t
   size_t canread = (needread > maxLen) ? maxLen : needread;
   DBGVB("[%s] seek to %d in %s and read %d bytes with maxLen=%d", __func__, index, netserver.chunkedPathBuffer, canread, maxLen);
   requiredfile.seek(index, SeekSet);
-  //vTaskDelay(1);
   requiredfile.read(buffer, canread);
   index += canread;
   if (requiredfile) requiredfile.close();
+  delay(0);
   return canread;
 }
 
@@ -227,12 +315,46 @@ const char *getFormat(BitrateFormat _format) {
   }
 }
 
-char wsbuf[BUFLEN * 2];
+char wsbuf[512];
+static size_t jsonEscapeAppend(char* dst, size_t dstSize, const char* src) {
+  if (!dst || dstSize == 0) return 0;
+  size_t o = 0;
+  if (!src) { dst[0] = 0; return 0; }
+  for (size_t i = 0; src[i] && o + 1 < dstSize; i++) {
+    const unsigned char c = static_cast<unsigned char>(src[i]);
+    const char* esc = nullptr;
+    switch (c) {
+      case '\"': esc = "\\\""; break;
+      case '\\': esc = "\\\\"; break;
+      case '\b': esc = "\\b"; break;
+      case '\f': esc = "\\f"; break;
+      case '\n': esc = "\\n"; break;
+      case '\r': esc = "\\r"; break;
+      case '\t': esc = "\\t"; break;
+      default: esc = nullptr; break;
+    }
+    if (esc) {
+      for (size_t k = 0; esc[k] && o + 1 < dstSize; k++) dst[o++] = esc[k];
+      continue;
+    }
+    if (c < 0x20) {
+      if (o + 6 >= dstSize) break;
+      const int wrote = snprintf(dst + o, dstSize - o, "\\u%04x", static_cast<unsigned int>(c));
+      if (wrote != 6) break;
+      o += 6;
+      continue;
+    }
+    dst[o++] = static_cast<char>(c);
+  }
+  dst[o] = 0;
+  return o;
+}
+
 void NetServer::processQueue(){
   if(nsQueue==NULL) return;
   nsRequestParams_t request;
   if(xQueueReceive(nsQueue, &request, NS_QUEUE_TICKS)){
-    memset(wsbuf, 0, BUFLEN * 2);
+    memset(wsbuf, 0, sizeof(wsbuf));
     uint8_t clientId = request.clientId;
     switch (request.type) {
       case PLAYLIST:        getPlaylist(clientId); break;
@@ -272,15 +394,16 @@ void NetServer::processQueue(){
             if (DSP_MODEL == DSP_NOKIA5110)                     act += F("\"group_nokia\",");
                                                                 act += F("\"group_timezone\",");
             if (SHOW_WEATHER || dbgact)                         act += F("\"group_weather\",");
+            if (SHOW_STOCKS || dbgact)                          act += F("\"group_stocks\",");
                                                                 act += F("\"group_controls\",");
             if (ENC_BTNL != 255 || ENC2_BTNL != 255 || dbgact)  act += F("\"group_encoder\",");
             if (IR_PIN != 255 || dbgact)                        act += F("\"group_ir\",");
           }
                                                                 act = act.substring(0, act.length() - 1);
-          sprintf (wsbuf, "{\"act\":[%s]}", act.c_str());
+          snprintf(wsbuf, sizeof(wsbuf), "{\"act\":[%s]}", act.c_str());
           break;
         }
-      case GETMODE:       sprintf (wsbuf, "{\"pmode\":\"%s\"}", network.status == CONNECTED ? "player" : "ap"); break;
+      case GETMODE:       snprintf(wsbuf, sizeof(wsbuf), "{\"pmode\":\"%s\"}", network.status == CONNECTED ? "player" : "ap"); break;
       case GETINDEX:      {
           requestOnChange(STATION, clientId); 
           requestOnChange(TITLE, clientId); 
@@ -295,76 +418,134 @@ void NetServer::processQueue(){
           return; 
           break;
         }
-      case GETSYSTEM:     sprintf (wsbuf, "{\"sst\":%d,\"aif\":%d,\"vu\":%d,\"softr\":%d,\"vut\":%d,\"mdns\":\"%s\"}", 
-                                  config.store.smartstart != 2, 
-                                  config.store.audioinfo, 
-                                  config.store.vumeter, 
-                                  config.store.softapdelay,
-                                  config.vuThreshold,
-                                  config.store.mdnsname); 
+      case GETSYSTEM:     {
+                                  size_t n = snprintf(wsbuf, sizeof(wsbuf),
+                                                      "{\"sst\":%d,\"aif\":%d,\"vu\":%d,\"vup\":%d,\"softr\":%d,\"vut\":%d,\"mdns\":\"",
+                                                      config.store.smartstart != 2,
+                                                      config.store.audioinfo,
+                                                      config.store.vumeter,
+                                                      config.store.vumeter_parallel,
+                                                      config.store.softapdelay,
+                                                      config.vuThreshold);
+                                  if (n < sizeof(wsbuf)) n += jsonEscapeAppend(wsbuf + n, sizeof(wsbuf) - n, config.store.mdnsname);
+                                  if (n < sizeof(wsbuf)) snprintf(wsbuf + n, sizeof(wsbuf) - n, "\"}");
                                   break;
-      case GETSCREEN:     sprintf (wsbuf, "{\"flip\":%d,\"inv\":%d,\"nump\":%d,\"tsf\":%d,\"tsd\":%d,\"dspon\":%d,\"br\":%d,\"con\":%d,\"scre\":%d,\"scrt\":%d,\"scrb\":%d,\"scrpe\":%d,\"scrpt\":%d,\"scrpb\":%d}", 
-                                  config.store.flipscreen, 
-                                  config.store.invertdisplay, 
-                                  config.store.numplaylist, 
-                                  config.store.fliptouch, 
-                                  config.store.dbgtouch, 
-                                  config.store.dspon, 
-                                  config.store.brightness, 
-                                  config.store.contrast,
-                                  config.store.screensaverEnabled,
-                                  config.store.screensaverTimeout,
-                                  config.store.screensaverBlank,
-                                  config.store.screensaverPlayingEnabled,
-                                  config.store.screensaverPlayingTimeout,
-                                  config.store.screensaverPlayingBlank);
+                                }
+      case GETSCREEN:     {
+                                  size_t n = snprintf(wsbuf, sizeof(wsbuf),
+                                                      "{\"flip\":%d,\"inv\":%d,\"nump\":%d,\"tsf\":%d,\"tsd\":%d,\"dspon\":%d,\"br\":%d,\"con\":%d,\"scre\":%d,\"scrt\":%d,\"scrb\":%d,\"scrpe\":%d,\"scrpt\":%d,\"scrpb\":%d,\"sstext\":\"",
+                                                      config.store.flipscreen,
+                                                      config.store.invertdisplay,
+                                                      config.store.numplaylist,
+                                                      config.store.fliptouch,
+                                                      config.store.dbgtouch,
+                                                      config.store.dspon,
+                                                      config.store.brightness,
+                                                      config.store.contrast,
+                                                      config.store.screensaverEnabled,
+                                                      config.store.screensaverTimeout,
+                                                      config.store.screensaverBlank,
+                                                      config.store.screensaverPlayingEnabled,
+                                                      config.store.screensaverPlayingTimeout,
+                                                      config.store.screensaverPlayingBlank);
+                                  if (n < sizeof(wsbuf)) n += jsonEscapeAppend(wsbuf + n, sizeof(wsbuf) - n, config.store.screensaverText);
+                                  if (n < sizeof(wsbuf)) snprintf(wsbuf + n, sizeof(wsbuf) - n, "\"}");
                                   break;
-      case GETTIMEZONE:   sprintf (wsbuf, "{\"tzh\":%d,\"tzm\":%d,\"sntp1\":\"%s\",\"sntp2\":\"%s\"}", 
-                                  config.store.tzHour, 
-                                  config.store.tzMin, 
-                                  config.store.sntp1, 
-                                  config.store.sntp2); 
+                                }
+      case GETTIMEZONE:   {
+                                  size_t n = snprintf(wsbuf, sizeof(wsbuf), "{\"tzh\":%d,\"tzm\":%d,\"sntp1\":\"", config.store.tzHour, config.store.tzMin);
+                                  if (n < sizeof(wsbuf)) n += jsonEscapeAppend(wsbuf + n, sizeof(wsbuf) - n, config.store.sntp1);
+                                  if (n < sizeof(wsbuf)) n += snprintf(wsbuf + n, sizeof(wsbuf) - n, "\",\"sntp2\":\"");
+                                  if (n < sizeof(wsbuf)) n += jsonEscapeAppend(wsbuf + n, sizeof(wsbuf) - n, config.store.sntp2);
+                                  if (n < sizeof(wsbuf)) snprintf(wsbuf + n, sizeof(wsbuf) - n, "\"}");
                                   break;
-      case GETWEATHER:    sprintf (wsbuf, "{\"wen\":%d,\"wlat\":\"%s\",\"wlon\":\"%s\",\"wkey\":\"%s\"}", 
-                                  config.store.showweather, 
-                                  config.store.weatherlat, 
-                                  config.store.weatherlon, 
-                                  config.store.weatherkey); 
+                                }
+      case GETWEATHER:    {
+                                  size_t n = snprintf(wsbuf, sizeof(wsbuf), "{\"wen\":%d,\"wlat\":\"", config.store.showweather);
+                                  if (n < sizeof(wsbuf)) n += jsonEscapeAppend(wsbuf + n, sizeof(wsbuf) - n, config.store.weatherlat);
+                                  if (n < sizeof(wsbuf)) n += snprintf(wsbuf + n, sizeof(wsbuf) - n, "\",\"wlon\":\"");
+                                  if (n < sizeof(wsbuf)) n += jsonEscapeAppend(wsbuf + n, sizeof(wsbuf) - n, config.store.weatherlon);
+                                  if (n < sizeof(wsbuf)) n += snprintf(wsbuf + n, sizeof(wsbuf) - n, "\",\"wkey\":\"");
+                                  if (n < sizeof(wsbuf)) n += jsonEscapeAppend(wsbuf + n, sizeof(wsbuf) - n, config.store.weatherkey);
+                                  if (n < sizeof(wsbuf)) snprintf(wsbuf + n, sizeof(wsbuf) - n, "\"}");
                                   break;
-      case GETCONTROLS:   sprintf (wsbuf, "{\"vols\":%d,\"enca\":%d,\"irtl\":%d,\"skipup\":%d}", 
+                                }
+      case GETSTOCKS:     {
+                                  size_t n = snprintf(wsbuf, sizeof(wsbuf), "{\"sen\":%d,\"symbols\":\"", config.store.showstocks);
+                                  if (n < sizeof(wsbuf)) n += jsonEscapeAppend(wsbuf + n, sizeof(wsbuf) - n, config.store.stocksSymbols);
+                                  if (n < sizeof(wsbuf)) snprintf(wsbuf + n, sizeof(wsbuf) - n, "\"}");
+                                  break;
+                                }
+      case GETCALENDAR:   {
+                                  size_t n = snprintf(wsbuf, sizeof(wsbuf), "{\"cen\":%d,\"ics\":\"", config.store.showcalendar);
+                                  if (n < sizeof(wsbuf)) n += jsonEscapeAppend(wsbuf + n, sizeof(wsbuf) - n, config.store.calendarics);
+                                  if (n < sizeof(wsbuf)) snprintf(wsbuf + n, sizeof(wsbuf) - n, "\"}");
+                                  break;
+                                }
+      case GETCONTROLS:   snprintf(wsbuf, sizeof(wsbuf), "{\"vols\":%d,\"enca\":%d,\"irtl\":%d,\"skipup\":%d}", 
                                   config.store.volsteps, 
                                   config.store.encacc, 
                                   config.store.irtlp,
                                   config.store.skipPlaylistUpDown); 
                                   break;
-      case DSPON:         sprintf (wsbuf, "{\"dspontrue\":%d}", 1); break;
+      case DSPON:         snprintf(wsbuf, sizeof(wsbuf), "{\"dspontrue\":%d}", 1); break;
       case STATION:       requestOnChange(STATIONNAME, clientId); requestOnChange(ITEM, clientId); break;
-      case STATIONNAME:   sprintf (wsbuf, "{\"nameset\": \"%s\"}", config.station.name); break;
-      case ITEM:          sprintf (wsbuf, "{\"current\": %d}", config.lastStation()); break;
-      case TITLE:         sprintf (wsbuf, "{\"meta\": \"%s\"}", config.station.title); telnet.printf("##CLI.META#: %s\n> ", config.station.title); break;
-      case VOLUME:        sprintf (wsbuf, "{\"vol\": %d}", config.store.volume); telnet.printf("##CLI.VOL#: %d\n", config.store.volume); break;
-      case NRSSI:         sprintf (wsbuf, "{\"rssi\": %d}", rssi); /*rssi = 255;*/ break;
-      case SDPOS:         sprintf (wsbuf, "{\"sdpos\": %d,\"sdend\": %d,\"sdtpos\": %d,\"sdtend\": %d}", 
+      case STATIONNAME:   {
+                                  size_t n = snprintf(wsbuf, sizeof(wsbuf), "{\"nameset\":\"");
+                                  if (n < sizeof(wsbuf)) n += jsonEscapeAppend(wsbuf + n, sizeof(wsbuf) - n, config.station.name);
+                                  if (n < sizeof(wsbuf)) snprintf(wsbuf + n, sizeof(wsbuf) - n, "\"}");
+                                  break;
+                                }
+      case ITEM:          snprintf(wsbuf, sizeof(wsbuf), "{\"current\": %d}", config.lastStation()); break;
+      case TITLE:         {
+                                  size_t n = snprintf(wsbuf, sizeof(wsbuf), "{\"meta\":\"");
+                                  if (n < sizeof(wsbuf)) n += jsonEscapeAppend(wsbuf + n, sizeof(wsbuf) - n, config.station.title);
+                                  if (n < sizeof(wsbuf)) snprintf(wsbuf + n, sizeof(wsbuf) - n, "\"}");
+                                  telnet.printf("##CLI.META#: %s\n> ", config.station.title);
+                                  break;
+                                }
+      case VOLUME:        snprintf(wsbuf, sizeof(wsbuf), "{\"vol\": %d}", config.store.volume); telnet.printf("##CLI.VOL#: %d\n", config.store.volume); break;
+      case NRSSI:         snprintf(wsbuf, sizeof(wsbuf), "{\"rssi\": %d}", rssi); /*rssi = 255;*/ break;
+      case VULEVEL:       {
+                                  uint16_t vulevel = player.get_VUlevel(255);
+                                  uint8_t L = (vulevel >> 8) & 0xFF;
+                                  uint8_t R = vulevel & 0xFF;
+                                  snprintf(wsbuf, sizeof(wsbuf), "{\"vul\":%u,\"vur\":%u}", L, R);
+                                  break;
+                                }
+      case SDPOS:         snprintf (wsbuf, sizeof(wsbuf), "{\"sdpos\": %d,\"sdend\": %d,\"sdtpos\": %d,\"sdtend\": %d}", 
                                   player.getFilePos(), 
                                   player.getFileSize(), 
                                   player.getAudioCurrentTime(), 
                                   player.getAudioFileDuration()); 
                                   break;
-      case SDLEN:         sprintf (wsbuf, "{\"sdmin\": %d,\"sdmax\": %d}", player.sd_min, player.sd_max); break;
-      case SDSNUFFLE:     sprintf (wsbuf, "{\"snuffle\": %d}", config.store.sdsnuffle); break;
-      case BITRATE:       sprintf (wsbuf, "{\"bitrate\": %d, \"format\": \"%s\"}", config.station.bitrate, getFormat(config.configFmt)); break;
-      case MODE:          sprintf (wsbuf, "{\"mode\": \"%s\"}", player.status() == PLAYING ? "playing" : "stopped"); telnet.info(); break;
-      case EQUALIZER:     sprintf (wsbuf, "{\"bass\": %d, \"middle\": %d, \"trebble\": %d}", config.store.bass, config.store.middle, config.store.trebble); break;
-      case BALANCE:       sprintf (wsbuf, "{\"balance\": %d}", config.store.balance); break;
-      case SDINIT:        sprintf (wsbuf, "{\"sdinit\": %d}", SDC_CS!=255); break;
-      case GETPLAYERMODE: sprintf (wsbuf, "{\"playermode\": \"%s\"}", config.getMode()==PM_SDCARD?"modesd":"modeweb"); break;
+      case SDLEN:         snprintf(wsbuf, sizeof(wsbuf), "{\"sdmin\": %d,\"sdmax\": %d}", player.sd_min, player.sd_max); break;
+      case SDSNUFFLE:     snprintf(wsbuf, sizeof(wsbuf), "{\"snuffle\": %d}", config.store.sdsnuffle); break;
+      case BITRATE:       snprintf(wsbuf, sizeof(wsbuf), "{\"bitrate\": %d, \"format\": \"%s\"}", config.station.bitrate, getFormat(config.configFmt)); break;
+      case MODE:          snprintf(wsbuf, sizeof(wsbuf), "{\"mode\": \"%s\"}", player.status() == PLAYING ? "playing" : "stopped"); break;
+      case EQUALIZER:     snprintf(wsbuf, sizeof(wsbuf), "{\"bass\": %d, \"middle\": %d, \"trebble\": %d}", config.store.bass, config.store.middle, config.store.trebble); break;
+      case BALANCE:       snprintf(wsbuf, sizeof(wsbuf), "{\"balance\": %d}", config.store.balance); break;
+      case SDINIT:        snprintf(wsbuf, sizeof(wsbuf), "{\"sdinit\": %d}", SDC_CS!=255); break;
+      case GETPLAYERMODE: snprintf(wsbuf, sizeof(wsbuf), "{\"playermode\": \"%s\"}", config.getMode()==PM_SDCARD?"modesd":"modeweb"); break;
       #ifdef USE_SD
         case CHANGEMODE:    config.changeMode(newConfigMode); return; break;
       #endif
       default:          break;
     }
     if (strlen(wsbuf) > 0) {
-      if (clientId == 0) { websocket.textAll(wsbuf); }else{ websocket.text(clientId, wsbuf); }
+      if (clientId == 0) {
+        if (request.type == NRSSI || request.type == VULEVEL || request.type == SDPOS || request.type == BITRATE) {
+          wsTextTelemetryAll(wsbuf);
+        } else {
+          websocket.textAll(wsbuf);
+        }
+      } else {
+        if (request.type == NRSSI || request.type == VULEVEL || request.type == SDPOS || request.type == BITRATE) {
+          if (wsClientTelemetryEnabled(clientId)) websocket.text(clientId, wsbuf);
+        } else {
+          websocket.text(clientId, wsbuf);
+        }
+      }
   #ifdef MQTT_ROOT_TOPIC
       if (clientId == 0 && (request.type == STATION || request.type == ITEM || request.type == TITLE || request.type == MODE)) mqttPublishStatus();
       if (clientId == 0 && request.type == VOLUME) mqttPublishVolume();
@@ -376,11 +557,16 @@ void NetServer::processQueue(){
 void NetServer::loop() {
   if(network.status==SDREADY) return;
   if (shouldReboot) {
-    Serial.println("Rebooting...");
+    Serial.println("Ponowne uruchamianie...");
     delay(100);
     ESP.restart();
   }
-  websocket.cleanupClients();
+  const uint32_t now = millis();
+  static uint32_t lastWsCleanMs = 0;
+  if ((int32_t)(now - lastWsCleanMs) >= 2000) {
+    lastWsCleanMs = now;
+    websocket.cleanupClients();
+  }
   switch (importRequest) {
     case IMPL:    importPlaylist();  importRequest = IMDONE; break;
     case IMWIFI:  config.saveWifi(); importRequest = IMDONE; break;
@@ -388,18 +574,36 @@ void NetServer::loop() {
   }
   //if (rssi < 255) requestOnChange(NRSSI, 0);
   processQueue();
+  static uint32_t lastVuMs = 0;
+  if (config.store.vumeter && websocket.count() > 0 && wsAnyTelemetryEnabled()) {
+    if ((int32_t)(now - lastVuMs) >= 160 && websocket.availableForWriteAll()) {
+      lastVuMs = now;
+      #if I2S_DOUT == 255
+        player.computeVUlevel();
+      #endif
+      uint16_t vulevel = player.get_VUlevel(255);
+      uint8_t L = (vulevel >> 8) & 0xFF;
+      uint8_t R = vulevel & 0xFF;
+      char buf[48];
+      snprintf(buf, sizeof(buf), "{\"vul\":%u,\"vur\":%u}", L, R);
+      wsTextTelemetryAll(buf);
+    }
+  }
 }
 
 #if IR_PIN!=255
 void NetServer::irToWs(const char* protocol, uint64_t irvalue) {
   char buf[BUFLEN] = { 0 };
-  sprintf (buf, "{\"ircode\": %llu, \"protocol\": \"%s\"}", irvalue, protocol);
+  snprintf(buf, sizeof(buf), "{\"ircode\": %llu, \"protocol\": \"%s\"}", irvalue, protocol);
   websocket.textAll(buf);
 }
 void NetServer::irValsToWs() {
   if (!irRecordEnable) return;
   char buf[BUFLEN] = { 0 };
-  sprintf (buf, "{\"irvals\": [%llu, %llu, %llu]}", config.ircodes.irVals[config.irindex][0], config.ircodes.irVals[config.irindex][1], config.ircodes.irVals[config.irindex][2]);
+  snprintf(buf, sizeof(buf), "{\"irvals\": [%llu, %llu, %llu]}",
+           config.getIRVal(config.irindex, 0),
+           config.getIRVal(config.irindex, 1),
+           config.getIRVal(config.irindex, 2));
   websocket.textAll(buf);
 }
 #endif
@@ -407,9 +611,17 @@ void NetServer::irValsToWs() {
 void NetServer::onWsMessage(void *arg, uint8_t *data, size_t len, uint8_t clientId) {
   AwsFrameInfo *info = (AwsFrameInfo*)arg;
   if (info->final && info->index == 0 && info->len == len && info->opcode == WS_TEXT) {
-    data[len] = 0;
-    char cmd[128], val[128];
-    if (config.parseWsCommand((const char*)data, cmd, val, 128)) {
+    if (len >= 256) return;
+    char msg[256];
+    memcpy(msg, data, len);
+    msg[len] = 0;
+    char cmd[65];
+    char val[SCREENSAVER_TEXT_LEN];
+    if (config.parseWsCommand(msg, cmd, sizeof(cmd), val, sizeof(val))) {
+      if (strcmp(cmd, "telemetry") == 0) {
+        wsClientSetTelemetry(clientId, atoi(val) != 0);
+        return;
+      }
       if (strcmp(cmd, "getmode") == 0     ) { requestOnChange(GETMODE, clientId);     return; }
       if (strcmp(cmd, "getindex") == 0    ) { requestOnChange(GETINDEX, clientId);    return; }
       if (strcmp(cmd, "getsystem") == 0   ) { requestOnChange(GETSYSTEM, clientId);   return; }
@@ -417,6 +629,8 @@ void NetServer::onWsMessage(void *arg, uint8_t *data, size_t len, uint8_t client
       if (strcmp(cmd, "gettimezone") == 0 ) { requestOnChange(GETTIMEZONE, clientId); return; }
       if (strcmp(cmd, "getcontrols") == 0 ) { requestOnChange(GETCONTROLS, clientId); return; }
       if (strcmp(cmd, "getweather") == 0  ) { requestOnChange(GETWEATHER, clientId);  return; }
+      if (strcmp(cmd, "getstocks") == 0   ) { requestOnChange(GETSTOCKS, clientId);   return; }
+      if (strcmp(cmd, "getcalendar") == 0 ) { requestOnChange(GETCALENDAR, clientId); return; }
       if (strcmp(cmd, "getactive") == 0   ) { requestOnChange(GETACTIVE, clientId);   return; }
       if (strcmp(cmd, "newmode") == 0     ) { newConfigMode = atoi(val); requestOnChange(CHANGEMODE, 0); return; }
       if (strcmp(cmd, "smartstart") == 0) {
@@ -436,6 +650,13 @@ void NetServer::onWsMessage(void *arg, uint8_t *data, size_t len, uint8_t client
         bool valb = static_cast<bool>(atoi(val));
         config.saveValue(&config.store.vumeter, valb);
         display.putRequest(SHOWVUMETER);
+        return;
+      }
+      if (strcmp(cmd, "vumeter_parallel") == 0) {
+        bool valb = static_cast<bool>(atoi(val));
+        config.saveValue(&config.store.vumeter_parallel, valb);
+        display.putRequest(SHOWVUMETER);
+        display.putRequest(NEWMODE, CLEAR); display.putRequest(NEWMODE, PLAYER);
         return;
       }
       if (strcmp(cmd, "softap") == 0) {
@@ -556,6 +777,12 @@ void NetServer::onWsMessage(void *arg, uint8_t *data, size_t len, uint8_t client
         #endif
         return;
       }
+      if (strcmp(cmd, "screensavertext") == 0) {
+        config.saveValue(config.store.screensaverText, val, sizeof(config.store.screensaverText));
+        display.putRequest(NEWWEATHER);
+        requestOnChange(GETSCREEN, clientId);
+        return;
+      }
       if (strcmp(cmd, "tzh") == 0) {
         int8_t vali = atoi(val);
         config.saveValue(&config.store.tzHour, vali);
@@ -615,6 +842,20 @@ void NetServer::onWsMessage(void *arg, uint8_t *data, size_t len, uint8_t client
         display.putRequest(SHOWWEATHER);
         return;
       }
+      if (strcmp(cmd, "showcalendar") == 0) {
+        bool valb = static_cast<bool>(atoi(val));
+        config.saveValue(&config.store.showcalendar, valb);
+        network.forceCalendar = true;
+        network.requestCalendarFetchNow();
+        display.putRequest(SHOWCALENDAR);
+        return;
+      }
+      if (strcmp(cmd, "showstocks") == 0) {
+        bool valb = static_cast<bool>(atoi(val));
+        config.saveValue(&config.store.showstocks, valb);
+        display.putRequest(SHOWSTOCKS);
+        return;
+      }
       if (strcmp(cmd, "lat") == 0) {
         config.saveValue(config.store.weatherlat, val, 10, false);
         return;
@@ -631,12 +872,25 @@ void NetServer::onWsMessage(void *arg, uint8_t *data, size_t len, uint8_t client
         display.putRequest(NEWMODE, CLEAR); display.putRequest(NEWMODE, PLAYER);
         return;
       }
+      if (strcmp(cmd, "stockssymbols") == 0) {
+        config.saveValue(config.store.stocksSymbols, val, 80);
+        display.putRequest(SHOWSTOCKS);
+        return;
+      }
+      if (strcmp(cmd, "calendarics") == 0) {
+        config.saveValue(config.store.calendarics, val, sizeof(config.store.calendarics));
+        network.forceCalendar = true;
+        network.requestCalendarFetchNow();
+        display.putRequest(SHOWCALENDAR);
+        return;
+      }
       /*  RESETS  */
       if (strcmp(cmd, "reset") == 0) {
         if (strcmp(val, "system") == 0) {
           config.saveValue(&config.store.smartstart, (uint8_t)2, false);
           config.saveValue(&config.store.audioinfo, false, false);
           config.saveValue(&config.store.vumeter, false, false);
+          config.saveValue(&config.store.vumeter_parallel, false, false);
           config.saveValue(&config.store.softapdelay, (uint8_t)0, false);
           snprintf(config.store.mdnsname, MDNS_LENGTH, "yoradio-%x", config.getChipId());
           config.saveValue(config.store.mdnsname, config.store.mdnsname, MDNS_LENGTH, true, true);
@@ -661,6 +915,7 @@ void NetServer::onWsMessage(void *arg, uint8_t *data, size_t len, uint8_t client
           config.saveValue(&config.store.screensaverPlayingEnabled, false);
           config.saveValue(&config.store.screensaverPlayingTimeout, (uint16_t)5);
           config.saveValue(&config.store.screensaverPlayingBlank, false);
+          config.saveValue(config.store.screensaverText, "", sizeof(config.store.screensaverText));
           display.putRequest(NEWMODE, CLEAR); display.putRequest(NEWMODE, PLAYER);
           requestOnChange(GETSCREEN, clientId);
           return;
@@ -683,6 +938,20 @@ void NetServer::onWsMessage(void *arg, uint8_t *data, size_t len, uint8_t client
           network.trueWeather=false;
           display.putRequest(NEWMODE, CLEAR); display.putRequest(NEWMODE, PLAYER);
           requestOnChange(GETWEATHER, clientId);
+          return;
+        }
+        if (strcmp(val, "calendar") == 0) {
+          config.saveValue(&config.store.showcalendar, false, false);
+          config.saveValue(config.store.calendarics, "", sizeof(config.store.calendarics));
+          display.putRequest(SHOWCALENDAR);
+          requestOnChange(GETCALENDAR, clientId);
+          return;
+        }
+        if (strcmp(val, "stocks") == 0) {
+          config.saveValue(&config.store.showstocks, false, false);
+          config.saveValue(config.store.stocksSymbols, "", 80);
+          display.putRequest(SHOWSTOCKS);
+          requestOnChange(GETSTOCKS, clientId);
           return;
         }
         if (strcmp(val, "controls") == 0) {
@@ -762,7 +1031,7 @@ void NetServer::onWsMessage(void *arg, uint8_t *data, size_t len, uint8_t client
 #if IR_PIN!=255
       if (strcmp(cmd, "irbtn") == 0) {
         config.irindex = atoi(val);
-        irRecordEnable = (config.irindex >= 0);
+        irRecordEnable = (config.irindex >= 0) && (config.irindex < IR_SLOTS_TOTAL);
         config.irchck = 0;
         irValsToWs();
         if (config.irindex < 0) config.saveIR();
@@ -772,7 +1041,11 @@ void NetServer::onWsMessage(void *arg, uint8_t *data, size_t len, uint8_t client
       }
       if (strcmp(cmd, "irclr") == 0) {
         uint8_t cl = atoi(val);
-        config.ircodes.irVals[config.irindex][cl] = 0;
+        if (config.irindex >= 0 && config.irindex < IR_SLOTS_TOTAL) {
+          config.setIRVal(config.irindex, cl, 0);
+          config.saveIR();
+          irValsToWs();
+        }
       }
 #endif
     }
@@ -781,7 +1054,7 @@ void NetServer::onWsMessage(void *arg, uint8_t *data, size_t len, uint8_t client
 
 void NetServer::getPlaylist(uint8_t clientId) {
   char buf[160] = {0};
-  sprintf(buf, "{\"file\": \"http://%s%s\"}", WiFi.localIP().toString().c_str(), PLAYLIST_PATH);
+  snprintf(buf, sizeof(buf), "{\"file\": \"http://%s%s\"}", WiFi.localIP().toString().c_str(), PLAYLIST_PATH);
   if (clientId == 0) { websocket.textAll(buf); } else { websocket.text(clientId, buf); }
 }
 
@@ -802,6 +1075,7 @@ bool NetServer::importPlaylist() {
   }
   char sName[BUFLEN], sUrl[BUFLEN], linePl[BUFLEN*3];;
   int sOvol;
+  uint16_t yieldCtr = 0;
   _readPlaylistLine(tempfile, linePl, sizeof(linePl)-1);
   if (config.parseCSV(linePl, sName, sUrl, sOvol)) {
     tempfile.close();
@@ -819,6 +1093,7 @@ bool NetServer::importPlaylist() {
         snprintf(linePl, sizeof(linePl)-1, "%s\t%s\t%d", sName, sUrl, 0);
         playlistfile.println(linePl);
       }
+      if((++yieldCtr % 25) == 0) delay(0);
     }
     playlistfile.flush();
     playlistfile.close();
@@ -891,8 +1166,14 @@ void handleUploadWeb(AsyncWebServerRequest *request, String filename, size_t ind
 
 void onWsEvent(AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventType type, void *arg, uint8_t *data, size_t len) {
   switch (type) {
-    case WS_EVT_CONNECT: if (config.store.audioinfo) Serial.printf("[WEBSOCKET] client #%u connected from %s\n", client->id(), client->remoteIP().toString().c_str()); break;
-    case WS_EVT_DISCONNECT: if (config.store.audioinfo) Serial.printf("[WEBSOCKET] client #%u disconnected\n", client->id()); break;
+    case WS_EVT_CONNECT:
+      wsClientOnConnect(client->id());
+      if (config.store.audioinfo) Serial.printf("[WEBSOCKET] klient #%u połączono z %s\n", client->id(), client->remoteIP().toString().c_str());
+      break;
+    case WS_EVT_DISCONNECT:
+      wsClientOnDisconnect(client->id());
+      if (config.store.audioinfo) Serial.printf("[WEBSOCKET] klient #%u rozłączono\n", client->id());
+      break;
     case WS_EVT_DATA: netserver.onWsMessage(arg, data, len, client->id()); break;
     case WS_EVT_PONG:
     case WS_EVT_ERROR:
@@ -923,12 +1204,10 @@ void handleHTTPArgs(AsyncWebServerRequest * request) {
       netserver.chunkedHtmlPage(String(), request, network.status == CONNECTED ? "/www/index.html" : "/www/settings.html");
       return;
     }
-    String urlStr = request->url();
-    if (urlStr.startsWith("/update") || urlStr.startsWith("/settings") || urlStr.startsWith("/ir")) {
-      const char *page = urlStr.startsWith("/update") ? "/www/update.html" :
-                         urlStr.startsWith("/ir")     ? "/www/ir.html"     :
-                                                       "/www/settings.html";
-      netserver.chunkedHtmlPage(String(), request, page);
+    if (strcmp(request->url().c_str(), "/update") == 0 || strcmp(request->url().c_str(), "/settings") == 0 || strcmp(request->url().c_str(), "/ir") == 0) {
+      char buf[40] = { 0 };
+      snprintf(buf, sizeof(buf), "/www%s.html", request->url().c_str());
+      netserver.chunkedHtmlPage(String(), request, buf);
       return;
     }
   }
@@ -1038,6 +1317,9 @@ void handleHTTPArgs(AsyncWebServerRequest * request) {
       return;
     }
   } else {
-    if (request->params() > 0) { request->send(404); return; }
+    if (request->params() > 0) {
+      request->send(404);
+      return;
+    }
   }
 }

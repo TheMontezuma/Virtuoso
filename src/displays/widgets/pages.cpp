@@ -66,7 +66,10 @@ bool Page::removePage(Page* page){
 }
 
 void Page::setActive(bool act) {
-  for(const auto& w: _widgets) w->setActive(act);
+  // Zmiana: Przy deaktywacji strony (act=false) wymuszamy czyszczenie widgetów (!act = true).
+  // Zapobiega to pozostawaniu "śmieci" (np. L/P z VU metera) jeśli zmiana strony
+  // nie wiąże się z pełnym czyszczeniem ekranu (lub jeśli czyszczenie jest niedokładne).
+  for(const auto& w: _widgets) w->setActive(act, !act);
   for(const auto& p: _pages) p->setActive(act);
   _active = act;
 }

@@ -5,6 +5,7 @@
 #include "display.h"
 #include "sdmanager.h"
 #include "netserver.h"
+#include "network.h"
 
 Player player;
 QueueHandle_t playerQueue;
@@ -64,7 +65,7 @@ void Player::init() {
   #endif
   _loadVol(config.store.volume);
   setConnectionTimeout(1700, 3700);
-  Serial.println("done");
+  Serial.println("gotowe");
 }
 
 void Player::sendCommand(playerRequestParams_t request){
@@ -92,6 +93,19 @@ void Player::setError(const char *e){
 
 void Player::_stop(bool alreadyStopped){
   log_i("%s called", __func__);
+  if(config.getMode() == PM_BLUETOOTH) {
+      _status = STOPPED;
+      setOutputPins(false);
+      if(MUTE_PIN!=255) digitalWrite(MUTE_PIN, !MUTE_VAL);
+      config.station.bitrate = 0;
+      config.setBitrateFormat(BF_UNCNOWN);
+      netserver.requestOnChange(BITRATE, 0);
+      display.putRequest(DBITRATE);
+      display.putRequest(PSTOP);
+      setDefaults();
+      if(!alreadyStopped) stopSong();
+      return;
+  }
   if(config.getMode()==PM_SDCARD && !alreadyStopped) config.sdResumePos = player.getFilePos();
   _status = STOPPED;
   setOutputPins(false);
@@ -184,6 +198,7 @@ void Player::setOutputPins(bool isPlaying) {
 }
 
 void Player::_play(uint16_t stationId) {
+  if (config.getMode() == PM_BLUETOOTH) return;
   log_i("%s called, stationId=%d", __func__, stationId);
   setError("");
   remoteStationName = false;
@@ -197,10 +212,13 @@ void Player::_play(uint16_t stationId) {
   }
   setOutputPins(false);
   //config.setTitle(config.getMode()==PM_WEB?const_PlConnect:"");
-  config.setTitle(config.getMode()==PM_WEB?const_PlConnect:"[next track]");
+  config.setTitle(config.getMode()==PM_WEB?const_PlConnect:"[następny utwór]");
   config.station.bitrate=0;
   config.setBitrateFormat(BF_UNCNOWN);
   config.loadStation(stationId);
+  if (config.store.showweather && strlen(config.store.weatherkey) != 0) {
+    network.requestWeatherFetchNow();
+  }
   _loadVol(config.store.volume);
   display.putRequest(DBITRATE);
   display.putRequest(NEWSTATION);
@@ -231,8 +249,8 @@ void Player::_play(uint16_t stationId) {
     if (player_on_start_play) player_on_start_play();
     pm.on_start_play();
   }else{
-    telnet.printf("##ERROR#:\tError connecting to %s\n", config.station.url);
-    SET_PLAY_ERROR("Error connecting to %s", config.station.url);
+    telnet.printf("##ERROR#:\tBłąd połączenia z %s\n", config.station.url);
+    SET_PLAY_ERROR("Błąd połączenia z %s", config.station.url);
     _stop(true);
   };
 }
@@ -256,8 +274,8 @@ void Player::browseUrl(){
     if (player_on_start_play) player_on_start_play();
     pm.on_start_play();
   }else{
-    telnet.printf("##ERROR#:\tError connecting to %s\n", burl);
-    SET_PLAY_ERROR("Error connecting to %s", burl);
+    telnet.printf("##ERROR#:\tBłąd połączenia z %s\n", burl);
+    SET_PLAY_ERROR("Błąd połączenia z %s", burl);
     _stop(true);
   }
   memset(burl, 0, MQTT_BURL_SIZE);
@@ -265,6 +283,7 @@ void Player::browseUrl(){
 #endif
 
 void Player::prev() {
+  if (config.getMode() == PM_BLUETOOTH) return;
   
   uint16_t lastStation = config.lastStation();
   if(config.getMode()==PM_WEB || !config.store.sdsnuffle){
@@ -274,6 +293,7 @@ void Player::prev() {
 }
 
 void Player::next() {
+  if (config.getMode() == PM_BLUETOOTH) return;
   uint16_t lastStation = config.lastStation();
   if(config.getMode()==PM_WEB || !config.store.sdsnuffle){
     if (lastStation == config.store.countStation) config.lastStation(1); else config.lastStation(lastStation+1);
@@ -284,6 +304,7 @@ void Player::next() {
 }
 
 void Player::toggle() {
+  if (config.getMode() == PM_BLUETOOTH) return;
   if (_status == PLAYING) {
     sendCommand({PR_STOP, 0});
   } else {

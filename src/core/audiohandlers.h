@@ -11,10 +11,18 @@ void audio_info(const char *info) {
   #ifdef USE_NEXTION
     nextion.audioinfo(info);
   #endif
-  if (strstr(info, "format is aac")  != NULL) { config.setBitrateFormat(BF_AAC); display.putRequest(DBITRATE); }
-  if (strstr(info, "format is flac") != NULL) { config.setBitrateFormat(BF_FLAC); display.putRequest(DBITRATE); }
-  if (strstr(info, "format is mp3")  != NULL) { config.setBitrateFormat(BF_MP3); display.putRequest(DBITRATE); }
-  if (strstr(info, "format is wav")  != NULL) { config.setBitrateFormat(BF_WAV); display.putRequest(DBITRATE); }
+  static int s_nominalKbps = 0;
+  static BitrateFormat s_nominalFmt = BF_UNCNOWN;
+  static uint32_t s_nominalStartMs = 0;
+  auto resetNominal = [&](){
+    s_nominalKbps = 0;
+    s_nominalFmt = config.configFmt;
+    s_nominalStartMs = millis();
+  };
+  if (strstr(info, "format is aac")  != NULL) { config.setBitrateFormat(BF_AAC); resetNominal(); display.putRequest(DBITRATE); }
+  if (strstr(info, "format is flac") != NULL) { config.setBitrateFormat(BF_FLAC); resetNominal(); display.putRequest(DBITRATE); }
+  if (strstr(info, "format is mp3")  != NULL) { config.setBitrateFormat(BF_MP3); resetNominal(); display.putRequest(DBITRATE); }
+  if (strstr(info, "format is wav")  != NULL) { config.setBitrateFormat(BF_WAV); resetNominal(); display.putRequest(DBITRATE); }
   if (strstr(info, "skip metadata") != NULL) config.setTitle(config.station.name);
   if (strstr(info, "Account already in use") != NULL || strstr(info, "HTTP/1.0 401") != NULL) {
     player.setError(info);
@@ -23,14 +31,61 @@ void audio_info(const char *info) {
   char* ici; char b[20]={0};
   if ((ici = strstr(info, "BitRate: ")) != NULL) {
     strlcpy(b, ici + 9, 50);
-    audio_bitrate(b);
+    if(b[0] >= '0' && b[0] <= '9') {
+      int kbpsRaw = atoi(b) / 1000;
+      if(kbpsRaw < 0) kbpsRaw = 0;
+      if(config.configFmt != s_nominalFmt){
+        s_nominalKbps = 0;
+        s_nominalFmt = config.configFmt;
+        s_nominalStartMs = millis();
+      }
+      if(s_nominalKbps == 0 && (config.configFmt == BF_AAC || config.configFmt == BF_FLAC)){
+        uint32_t age = millis() - s_nominalStartMs;
+        if(config.configFmt == BF_AAC){
+          if(kbpsRaw >= 24 && kbpsRaw <= 512 && (kbpsRaw % 8) == 0) s_nominalKbps = kbpsRaw;
+          else if(age > 3000 && kbpsRaw > 0) s_nominalKbps = ((kbpsRaw + 8) / 16) * 16;
+        }else{
+          if(kbpsRaw >= 200 && kbpsRaw <= 3000 && (kbpsRaw % 10) == 0) s_nominalKbps = kbpsRaw;
+          else if(age > 3000 && kbpsRaw > 0) s_nominalKbps = ((kbpsRaw + 25) / 50) * 50;
+        }
+      }
+      if(s_nominalKbps > 0 && (config.configFmt == BF_AAC || config.configFmt == BF_FLAC)){
+        int bps = s_nominalKbps * 1000;
+        char buf[16];
+        snprintf(buf, sizeof(buf), "%d", bps);
+        audio_bitrate(buf);
+      }else{
+        audio_bitrate(b);
+      }
+    }
   }
 }
 
 void audio_bitrate(const char *info)
 {
+  int kbps = atoi(info) / 1000;
+  if(kbps < 0) kbps = 0;
+  config.station.bitrate = kbps;
+
+  static uint32_t lastSentMs = 0;
+  static int lastSentKbps = -1;
+
+  uint32_t now = millis();
+  uint32_t minIntervalMs = 1200;
+  int minDiffKbps = 8;
+  if (config.configFmt == BF_MP3) { minIntervalMs = 800; minDiffKbps = 1; }
+  if (config.configFmt == BF_AAC) { minIntervalMs = 8000; minDiffKbps = 32; }
+  if (config.configFmt == BF_FLAC) { minIntervalMs = 12000; minDiffKbps = 64; }
+
+  int diff = lastSentKbps < 0 ? 9999 : abs(kbps - lastSentKbps);
+  bool timeOk = (uint32_t)(now - lastSentMs) >= minIntervalMs;
+  bool changeBig = diff >= minDiffKbps;
+  if(lastSentKbps >= 0 && !timeOk && !changeBig) return;
+
+  lastSentMs = now;
+  lastSentKbps = kbps;
+
   if(config.store.audioinfo) telnet.printf("%s %s\n", "##AUDIO.BITRATE#:", info);
-  config.station.bitrate = atoi(info) / 1000;
   display.putRequest(DBITRATE);
   #ifdef USE_NEXTION
     nextion.bitrate(config.station.bitrate);
@@ -39,14 +94,8 @@ void audio_bitrate(const char *info)
 }
 
 bool printable(const char *info) {
-  if(L10N_LANGUAGE!=RU) return true;
-  bool p = true;
-  for (int c = 0; c < strlen(info); c++)
-  {
-    if ((uint8_t)info[c] > 0x7e || (uint8_t)info[c] < 0x20) p = false;
-  }
-  if (!p) p = (uint8_t)info[0] >= 0xC2 && (uint8_t)info[1] >= 0x80 && (uint8_t)info[1] <= 0xBF;
-  return p;
+  // Always allow for Polish UTF-8 (and all characters generally)
+  return true;
 }
 
 void audio_showstation(const char *info) {

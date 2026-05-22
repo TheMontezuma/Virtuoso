@@ -43,10 +43,10 @@ extern "C" {
   #define XTASK_MEM_SIZE  6144 // 8192 / 2
 #endif
 #ifndef XTASK_PRIOTITY
-  #define XTASK_PRIOTITY  5 //3
+  #define XTASK_PRIOTITY  3 //3
 #endif
 #ifndef ATCP_TASK_DELAY
-  #define ATCP_TASK_DELAY  2
+  #define ATCP_TASK_DELAY  5
 #endif
 
 #ifndef XQUEUE_SIZE

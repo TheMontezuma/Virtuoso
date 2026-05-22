@@ -42,7 +42,8 @@ class Display {
   private:
     ScrollWidget _meta, _title1, _plcurrent;
     ScrollWidget *_weather;
-    ScrollWidget *_stocks;
+    ScrollWidget *_sstext;
+    ScrollWidget *_cal1, *_cal2;
     ScrollWidget *_title2;
     BitrateWidget *_fullbitrate;
     FillWidget *_metabackground, *_plbackground;

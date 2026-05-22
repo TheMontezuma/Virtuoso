@@ -11,6 +11,44 @@ long encOldPosition = 0;
 long enc2OldPosition = 0;
 int lpId = -1;
 
+#ifndef BT_KEY_PIN
+#define BT_KEY_PIN 255
+#endif
+#ifndef BT_KEY_ACTIVE_LOW
+#define BT_KEY_ACTIVE_LOW false
+#endif
+#ifndef BT_KEY_CLICK_MS
+#define BT_KEY_CLICK_MS 200
+#endif
+
+static inline void _setBtKey(bool pressed) {
+#if BT_KEY_PIN != 255
+  uint8_t v = pressed ? (BT_KEY_ACTIVE_LOW ? LOW : HIGH) : (BT_KEY_ACTIVE_LOW ? HIGH : LOW);
+  digitalWrite(BT_KEY_PIN, v);
+#else
+  (void)pressed;
+#endif
+}
+
+static inline void _initBtKeyPin() {
+#if BT_KEY_PIN != 255
+  _setBtKey(false);
+  pinMode(BT_KEY_PIN, OUTPUT);
+#endif
+}
+
+static inline void _btKeyClick() {
+#if BT_KEY_PIN != 255
+  _setBtKey(true);
+  delay(BT_KEY_CLICK_MS);
+  _setBtKey(false);
+#endif
+}
+#if TOUCH_PIN != 255
+static uint16_t touchBaseline = 0;
+static bool touchPressed = false;
+#endif
+
 #define ISPUSHBUTTONS BTN_LEFT != 255 || BTN_CENTER != 255 || BTN_RIGHT != 255 || ENC_BTNB != 255 || BTN_UP != 255 || BTN_DOWN != 255 || ENC2_BTNB != 255 || BTN_MODE != 255
 #if ISPUSHBUTTONS
 #include "../OneButton/OneButton.h"
@@ -66,6 +104,11 @@ const uint16_t kMinUnknownSize = 12;
 
 IRrecv irrecv(IR_PIN, kCaptureBufferSize, kTimeout, true);
 decode_results irResults;
+static bool irPwrResumeAfter = false;
+static bool irMuted = false;
+static uint8_t irMuteSavedVolume = 0;
+static bool irDimmed = false;
+static uint8_t irBrightnessSaved = 100;
 #endif
 //----------------------------------------------------------------
 #if ENC_BTNL != 255
@@ -83,6 +126,7 @@ void IRAM_ATTR readEncoder2ISR() {
 #endif
 //----------------------------------------------------------------
 void initControls() {
+  _initBtKeyPin();
 
 #if ENC_BTNL != 255
   encoder.begin();
@@ -118,7 +162,9 @@ void initControls() {
     },
                                   (void*)i);
     button[i].setClickTicks(BTN_CLICK_TICKS);
-    button[i].setPressTicks(BTN_PRESS_TICKS);
+    uint16_t pressTicks = BTN_PRESS_TICKS;
+    if (i == 3 || i == 6) pressTicks = 3000;
+    button[i].setPressTicks(pressTicks);
   }
 #endif
 
@@ -135,6 +181,17 @@ void initControls() {
   irrecv.setTolerance(config.store.irtlp);
   irrecv.enableIRIn();
 #endif  // IR_PIN!=255
+#if TOUCH_PIN != 255
+  {
+    uint32_t acc = 0;
+    const uint8_t n = 16;
+    for (uint8_t i = 0; i < n; i++) {
+      acc += touchRead(TOUCH_PIN);
+      delay(5);
+    }
+    touchBaseline = acc / n;
+  }
+#endif
 }
 //----------------------------------------------------------------
 void loopControls() {
@@ -167,6 +224,22 @@ void loopControls() {
 #if (TS_MODEL != TS_MODEL_UNDEFINED) && (DSP_MODEL != DSP_DUMMY)
   if (network.status == CONNECTED || network.status == SDREADY) touchscreen.loop();
 #endif
+#if TOUCH_PIN != 255
+  {
+    uint16_t v = touchRead(TOUCH_PIN);
+    bool active = (v + TOUCH_THRESHOLD) < touchBaseline;
+    if (!active) {
+      touchBaseline = (touchBaseline * 7 + v) / 8;
+    }
+    if (!touchPressed && active) {
+      touchPressed = true;
+      onBtnLongPressStart(EVT_BTNMODE);
+    } else if (touchPressed && !active) {
+      touchPressed = false;
+      onBtnLongPressStop(EVT_BTNMODE);
+    }
+  }
+#endif
 
 }
 //----------------------------------------------------------------
@@ -176,8 +249,8 @@ void encodersLoop(yoEncoder* enc, bool first) {
   if (display.mode() == LOST) return;
   int8_t encoderDelta = enc->encoderChanged();
   if (encoderDelta != 0) {
-    uint8_t encBtnState = digitalRead(first ? ENC_BTNB : ENC2_BTNB);
 #if defined(DUMMYDISPLAY) && !defined(USE_NEXTION)
+    uint8_t encBtnState = digitalRead(first ? ENC_BTNB : ENC2_BTNB);
     first = first ? (first && encBtnState) : (!encBtnState);
     if (first) {
       int nv = config.store.volume + encoderDelta;
@@ -189,19 +262,14 @@ void encodersLoop(yoEncoder* enc, bool first) {
       else player.prev();
     }
 #else
-    if (first) {
-      controlsEvent(encoderDelta > 0, encoderDelta);
+    if (display.mode() == STATIONS) {
+      controlsEvent(encoderDelta > 0);
     } else {
-      if (encBtnState == HIGH && display.mode() == PLAYER) {
-        if (config.store.skipPlaylistUpDown) {
-          if (encoderDelta > 0) player.next();
-          else player.prev();
-          return;
-        }
+      if (display.mode() == PLAYER) {
         display.putRequest(NEWMODE, STATIONS);
-        while (display.mode() != STATIONS) { delay(10); }
+      } else {
+        controlsEvent(encoderDelta > 0, encoderDelta);
       }
-      controlsEvent(encoderDelta > 0, encoderDelta);
     }
 #endif
   }
@@ -244,14 +312,30 @@ void irNumber(uint8_t num) {
 //----------------------------------------------------------------
 void irLoop() {
   if (irrecv.decode(&irResults)) {
-    if (irResults.value < 256) return;
+    // Ignoruj szum (UNKNOWN protocol)
+    if (irResults.decode_type == decode_type_t::UNKNOWN) return;
+    
+    static const uint64_t IR_REPEAT_VALUE = 0xFFFFFFFFULL;
+    static uint64_t lastNonVolValue = 0;
+    static uint32_t lastNonVolMs = 0;
     if (netserver.irRecordEnable) {
       Serial.print(resultToHumanReadableBasic(&irResults));
       Serial.println("--------------------------");
-      config.ircodes.irVals[config.irindex][config.irchck] = irResults.value;
-      netserver.irToWs(typeToString(irResults.decode_type, irResults.repeat).c_str(), irResults.value);
+      if (!irResults.repeat && irResults.value != 0 && irResults.value != IR_REPEAT_VALUE) {
+        for (int t = 0; t < IR_SLOTS_TOTAL; t++) {
+          for (int k = 0; k < 3; k++) {
+            if (t == config.irindex && k == config.irchck) continue;
+            if (config.getIRVal(t, k) == irResults.value) config.setIRVal(t, k, 0);
+          }
+        }
+        config.setIRVal(config.irindex, config.irchck, irResults.value);
+        config.saveIR();
+        netserver.irValsToWs();
+        netserver.irToWs(typeToString(irResults.decode_type, irResults.repeat).c_str(), irResults.value);
+      }
       return;
     }
+    if (irResults.value == 0) return;
     if (!irResults.repeat /* && irResults.command!=0*/) {
       irVolRepeat = 0;
     }
@@ -267,14 +351,22 @@ void irLoop() {
           break;
         }
     }
-    for (int target = 0; target < 17; target++) {
+    if (irResults.value == IR_REPEAT_VALUE) return;
+    if (irResults.repeat && irVolRepeat == 0) {
+      uint32_t now = millis();
+      if (irResults.value == lastNonVolValue && (now - lastNonVolMs) < 400) return;
+    }
+    for (int target = 0; target < IR_SLOTS_TOTAL; target++) {
       for (int j = 0; j < 3; j++) {
-        if (config.ircodes.irVals[target][j] == irResults.value) {
-          if (network.status != CONNECTED && network.status != SDREADY && target != IR_AST) return;
-          if (target != IR_AST && display.mode() == LOST) return;
-          if (display.mode() == SCREENSAVER || display.mode() == SCREENBLANK) {
+        if (config.getIRVal(target, j) == irResults.value) {
+          if (network.status != CONNECTED && network.status != SDREADY && target != IR_AST && target != IR_PWR && target != IR_HOME && target != IR_BACK && target != IR_MUTE && target != IR_HASH && target != IR_MENU) return;
+          if (target != IR_AST && target != IR_HOME && target != IR_BACK && target != IR_MUTE && target != IR_HASH && target != IR_MENU && display.mode() == LOST) return;
+          if ((display.mode() == SCREENSAVER || display.mode() == SCREENBLANK) && target != IR_PWR) {
             display.putRequest(NEWMODE, PLAYER);
-            return;
+          }
+          if (target != IR_UP && target != IR_DOWN) {
+            lastNonVolValue = irResults.value;
+            lastNonVolMs = millis();
           }
           switch (target) {
             case IR_PLAY:
@@ -289,14 +381,36 @@ void irLoop() {
                 onBtnClick(1);
                 break;
               }
+            case IR_PWR:
+              {
+                irBlink();
+                if (!config.store.dspon || display.mode() == SLEEPING) {
+                  config.setDspOn(true);
+                  config.screensaverTicks = SCREENSAVERSTARTUPDELAY;
+                  config.screensaverPlayingTicks = SCREENSAVERSTARTUPDELAY;
+                  config.isScreensaver = false;
+                  display.putRequest(NEWMODE, CLEAR);
+                  display.putRequest(NEWMODE, PLAYER);
+                  if (irPwrResumeAfter) {
+                    player.sendCommand({ PR_PLAY, config.lastStation() });
+                  }
+                  return;
+                }
+                irPwrResumeAfter = player.isRunning();
+                player.sendCommand({ PR_STOP, 0 });
+                display.putRequest(NEWMODE, SLEEPING);
+                return;
+              }
             case IR_PREV:
               {
                 player.prev();
+                irVolRepeat = 0;
                 break;
               }
             case IR_NEXT:
               {
                 player.next();
+                irVolRepeat = 0;
                 break;
               }
             case IR_UP:
@@ -311,7 +425,7 @@ void irLoop() {
                 irVolRepeat = 2;
                 break;
               }
-            case IR_HASH:
+            case IR_MENU:
               {
                 if (display.mode() == NUMBERS) {
                   display.putRequest(NEWMODE, PLAYER);
@@ -319,6 +433,55 @@ void irLoop() {
                   break;
                 }
                 display.putRequest(NEWMODE, display.mode() == PLAYER ? STATIONS : PLAYER);
+                break;
+              }
+            case IR_HASH:
+              {
+                if (!config.store.dspon) config.setDspOn(true);
+                uint8_t current = config.store.brightness;
+                if (!irDimmed) {
+                  irBrightnessSaved = current;
+                  irDimmed = true;
+                  uint8_t dim = current / 2;
+                  if (dim == 0 && current > 0) dim = 1;
+                  config.store.brightness = dim;
+                  config.setBrightness(false);
+                } else {
+                  irDimmed = false;
+                  uint8_t restore = irBrightnessSaved == 0 ? 100 : irBrightnessSaved;
+                  config.store.brightness = restore;
+                  config.setBrightness(false);
+                }
+                break;
+              }
+            case IR_HOME:
+              {
+                display.numOfNextStation = 0;
+                display.putRequest(NEWMODE, CLEAR);
+                display.putRequest(NEWMODE, PLAYER);
+                break;
+              }
+            case IR_BACK:
+              {
+                display.numOfNextStation = 0;
+                if (display.mode() != PLAYER) {
+                  display.putRequest(NEWMODE, CLEAR);
+                  display.putRequest(NEWMODE, PLAYER);
+                }
+                break;
+              }
+            case IR_MUTE:
+              {
+                if (!irMuted) {
+                  irMuteSavedVolume = config.store.volume;
+                  irMuted = true;
+                  config.setVolume(0);
+                  player.setVolume(player.volToI2S(0));
+                } else {
+                  irMuted = false;
+                  config.setVolume(irMuteSavedVolume);
+                  player.setVolume(player.volToI2S(irMuteSavedVolume));
+                }
                 break;
               }
             case IR_0:
@@ -378,7 +541,7 @@ void irLoop() {
                 break;
               }
           } /* switch (target) */
-          target = 17;
+          target = IR_SLOTS_TOTAL;
           break;
         } /* if(config.ircodes.irVals[target][j]==irResults.value) */
       }   /* for(int j=0; j<3; j++) */
@@ -398,7 +561,6 @@ void onBtnLongPressStart(int id) {
         break;
       }
     case EVT_BTNCENTER:
-    case EVT_ENCBTNB:
       {
 #if defined(DUMMYDISPLAY) && !defined(USE_NEXTION)
         break;
@@ -406,12 +568,22 @@ void onBtnLongPressStart(int id) {
         display.putRequest(NEWMODE, display.mode() == PLAYER ? STATIONS : PLAYER);
         break;
       }
+    case EVT_ENCBTNB:
     case EVT_ENC2BTNB:
       {
+#if BT_KEY_PIN != 255
+        if (config.getMode() == PM_BLUETOOTH && display.mode() == PLAYER) {
+          _setBtKey(true);
+          break;
+        }
+#endif
 #if defined(DUMMYDISPLAY) && !defined(USE_NEXTION)
         break;
 #endif
-        display.putRequest(NEWMODE, display.mode() == PLAYER ? VOL : PLAYER);
+        if (display.mode() == PLAYER) {
+          display.putRequest(NEWMODE, VOL);
+          display.putRequest(DRAWVOL);
+        }
         break;
       }
     case EVT_BTNMODE:
@@ -432,6 +604,13 @@ void onBtnLongPressStop(int id) {
     case EVT_BTNDOWN:
       {
         lpId = -1;
+        break;
+      }
+    case EVT_ENC2BTNB:
+      {
+#if BT_KEY_PIN != 255
+        if (config.getMode() == PM_BLUETOOTH) _setBtKey(false);
+#endif
         break;
       }
     case EVT_BTNMODE:
@@ -525,9 +704,13 @@ void onBtnClick(int id) {
         break;
       }
     case EVT_BTNCENTER:
-    case EVT_ENCBTNB:
-    case EVT_ENC2BTNB:
       {
+#if BT_KEY_PIN != 255
+        if (btnid == EVT_ENC2BTNB && config.getMode() == PM_BLUETOOTH && display.mode() == PLAYER) {
+          _btKeyClick();
+          break;
+        }
+#endif
         if (display.mode() == NUMBERS) {
           display.numOfNextStation = 0;
           display.putRequest(NEWMODE, PLAYER);
@@ -549,9 +732,43 @@ void onBtnClick(int id) {
           player.sendCommand({ PR_PLAY, display.currentPlItem });
         }
         if (network.status == SOFT_AP || display.mode() == LOST) {
-#ifdef USE_SD
           config.changeMode();
+        }
+        break;
+      }
+    case EVT_ENCBTNB:
+    case EVT_ENC2BTNB:
+      {
+#if BT_KEY_PIN != 255
+        if (btnid == EVT_ENC2BTNB && config.getMode() == PM_BLUETOOTH && display.mode() == PLAYER) {
+          _btKeyClick();
+          break;
+        }
 #endif
+        if (display.mode() == NUMBERS) {
+          display.numOfNextStation = 0;
+          display.putRequest(NEWMODE, PLAYER);
+        }
+        if (display.mode() == SCREENSAVER || display.mode() == SCREENBLANK) {
+          display.putRequest(NEWMODE, PLAYER);
+#ifdef DSP_LCD
+          delay(50);
+#endif
+        }
+        if (display.mode() == PLAYER) {
+          player.toggle();
+          break;
+        }
+        if (display.mode() == STATIONS) {
+          display.putRequest(NEWMODE, PLAYER);
+#ifdef DSP_LCD
+          delay(50);
+#endif
+          player.sendCommand({ PR_PLAY, display.currentPlItem });
+          break;
+        }
+        if (network.status == SOFT_AP || display.mode() == LOST) {
+          config.changeMode();
         }
         break;
       }
@@ -587,13 +804,11 @@ void onBtnClick(int id) {
         }
         break;
       }
-#ifdef USE_SD
     case EVT_BTNMODE:
       {
         config.changeMode();
         break;
       }
-#endif
     default: break;
   }
 }

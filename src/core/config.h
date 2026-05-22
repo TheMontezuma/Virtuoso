@@ -5,12 +5,13 @@
 #include <SPI.h>
 #include <SPIFFS.h>
 #include <EEPROM.h>
+#include <Preferences.h>
 //#include "SD.h"
 #include "options.h"
 #include "rtcsupport.h"
 #include "../pluginsManager/pluginsManager.h"
 
-#define EEPROM_SIZE       1024
+#define EEPROM_SIZE       2048
 #define EEPROM_START      500
 #define EEPROM_START_IR   0
 #define EEPROM_START_2    10
@@ -27,28 +28,29 @@
 
 #ifdef DEBUG_V
 #define DBGH()       { Serial.printf("[%s:%s:%d] Heap: %d\n", __PRETTY_FUNCTION__, __FILE__, __LINE__, xPortGetFreeHeapSize()); }
-#define DBGVB( ... ) { char buf[200]; sprintf( buf, __VA_ARGS__ ) ; Serial.print("[DEBUG]\t"); Serial.println(buf); }
+#define DBGVB( ... ) { char buf[200]; snprintf(buf, sizeof(buf), __VA_ARGS__); Serial.print("[DEBUG]\t"); Serial.println(buf); }
 #else
 #define DBGVB( ... )
 #define DBGH()
 #endif
-#define BOOTLOG( ... ) { char buf[120]; sprintf( buf, __VA_ARGS__ ) ; Serial.print("##[BOOT]#\t"); Serial.println(buf); }
+#define BOOTLOG( ... ) { char buf[120]; snprintf(buf, sizeof(buf), __VA_ARGS__); Serial.print("##[BOOT]#\t"); Serial.println(buf); }
 #define EVERY_MS(x)  static uint32_t tmr; bool flag = millis() - tmr >= (x); if (flag) tmr += (x); if (flag)
 #define REAL_PLAYL   getMode()==PM_WEB?PLAYLIST_PATH:PLAYLIST_SD_PATH
 #define REAL_INDEX   getMode()==PM_WEB?INDEX_PATH:INDEX_SD_PATH
 
-#define MAX_PLAY_MODE   1
+#define MAX_PLAY_MODE   2
 #define WEATHERKEY_LENGTH 58
 #define MDNS_LENGTH 24
+#define SCREENSAVER_TEXT_LEN 128
 #if SDC_CS!=255
   #define USE_SD
 #endif
 #if ESP_ARDUINO_VERSION >= ESP_ARDUINO_VERSION_VAL(3, 0, 0)
   #define ESP_ARDUINO_3 1
 #endif
-#define CONFIG_VERSION  4
+#define CONFIG_VERSION  8
 
-enum playMode_e      : uint8_t  { PM_WEB=0, PM_SDCARD=1 };
+enum playMode_e      : uint8_t  { PM_WEB=0, PM_SDCARD=1, PM_BLUETOOTH=2 };
 enum BitrateFormat { BF_UNCNOWN, BF_MP3, BF_AAC, BF_FLAC, BF_OGG, BF_WAV };
 
 void u8fix(char *src);
@@ -116,6 +118,8 @@ struct config_t
   char      weatherlat[10];
   char      weatherlon[10];
   char      weatherkey[WEATHERKEY_LENGTH];
+  bool      showstocks;
+  char      stocksSymbols[80];
   uint16_t  _reserved;
   uint16_t  lastSdStation;
   bool      sdsnuffle;
@@ -140,17 +144,24 @@ struct config_t
   bool      screensaverPlayingEnabled;
   uint16_t  screensaverPlayingTimeout;
   bool      screensaverPlayingBlank;
+  char      screensaverText[SCREENSAVER_TEXT_LEN];
   char      mdnsname[24];
   bool      skipPlaylistUpDown;
-  bool      showstocks;
-  char      stocksSymbols[80];
+  bool      showcalendar;
+  char      calendarics[128];
+  bool      vumeter_parallel;
 };
 
 #if IR_PIN!=255
+static const uint8_t IR_SLOTS_EEPROM = 20;
+static const uint8_t IR_SLOTS_EXTRA = 2;
+static const uint8_t IR_SLOTS_TOTAL = IR_SLOTS_EEPROM + IR_SLOTS_EXTRA;
+static const uint8_t IR_EXTRA_MUTE = 0;
+static const uint8_t IR_EXTRA_MENU = 1;
 struct ircodes_t
 {
   unsigned int ir_set; //must be 4224
-  uint64_t irVals[20][3];
+  uint64_t irVals[IR_SLOTS_EEPROM][3];
 };
 #endif
 
@@ -178,6 +189,7 @@ class Config {
     int irindex;
     uint8_t irchck;
     ircodes_t ircodes;
+    uint64_t irValsExtra[IR_SLOTS_EXTRA][3];
 #endif
     BitrateFormat configFmt = BF_UNCNOWN;
     neworkItem ssids[5];
@@ -189,11 +201,17 @@ class Config {
     uint16_t screensaverTicks;
     uint16_t screensaverPlayingTicks;
     bool     isScreensaver;
+    bool     clockOnly;
+    int16_t  clockOnlyOffsetX;
   public:
     Config() {};
     //void save();
 #if IR_PIN!=255
     void saveIR();
+    void loadIRExtra();
+    void saveIRExtra();
+    uint64_t getIRVal(uint8_t slot, uint8_t alt) const;
+    void setIRVal(uint8_t slot, uint8_t alt, uint64_t value);
 #endif
     void init();
     void loadTheme();
@@ -207,8 +225,9 @@ class Config {
     void setTitle(const char* title);
     void setStation(const char* station);
     bool parseCSV(const char* line, char* name, char* url, int &ovol);
+    bool parseJSON(const char* line, char* name, size_t nameSize, char* url, size_t urlSize, int &ovol);
     bool parseJSON(const char* line, char* name, char* url, int &ovol);
-    bool parseWsCommand(const char* line, char* cmd, char* val, uint8_t cSize);
+    bool parseWsCommand(const char* line, char* cmd, size_t cmdSize, char* val, size_t valSize);
     bool parseSsid(const char* line, char* ssid, char* pass);
     void loadStation(uint16_t station);
     bool initNetwork();
@@ -220,8 +239,8 @@ class Config {
     void indexPlaylist();
     #ifdef USE_SD
       void initSDPlaylist();
-      void changeMode(int newmode=-1);
     #endif
+    void changeMode(int newmode=-1);
     uint16_t lastStation(){
       return getMode()==PM_WEB?store.lastStation:store.lastSdStation;
     }
@@ -234,6 +253,8 @@ class Config {
     void setTimezone(int8_t tzh, int8_t tzm);
     void setTimezoneOffset(uint16_t tzo);
     uint16_t getTimezoneOffset();
+    bool getDstAutoEU();
+    void setDstAutoEU(bool enabled);
     void setBrightness(bool dosave=false);
     void setDspOn(bool dspon, bool saveval = true);
     void sleepForAfter(uint16_t sleepfor, uint16_t sleepafter=0);

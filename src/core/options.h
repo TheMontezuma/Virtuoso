@@ -1,4 +1,4 @@
-#ifndef options_hGRAY_1
+#ifndef options_h
 #define options_h
 
 #define YOVERSION "0.9.434"
@@ -90,6 +90,9 @@ The connection tables are located here https://github.com/e2002/yoradio#connecti
 #endif
 #ifndef I2C_RST
   #define I2C_RST -1
+#endif
+#ifndef I2C_FREQ_HZ
+  #define I2C_FREQ_HZ 100000
 #endif
 
 /*        VS1053                  */
@@ -306,6 +309,12 @@ The connection tables are located here https://github.com/e2002/yoradio#connecti
 #ifndef WAKE_PIN
   #define WAKE_PIN      255   // Wake Pin (for manual wakeup from sleep mode. can match with BTN_XXXX, ENC_BTNB, ENC2_BTNB.  must be one of: 0,2,4,12,13,14,15,25,26,27,32,33,34,35,36,39)
 #endif
+#ifndef TOUCH_PIN
+  #define TOUCH_PIN      255
+#endif
+#ifndef TOUCH_THRESHOLD
+  #define TOUCH_THRESHOLD  30
+#endif
 #ifndef LIGHT_SENSOR
   #define LIGHT_SENSOR  255   // Light sensor
 #endif
@@ -327,9 +336,8 @@ The connection tables are located here https://github.com/e2002/yoradio#connecti
 #ifndef RSSI_DIGIT
   #define RSSI_DIGIT       false   // Extended weather
 #endif
-#ifndef RSSI_STEPS
-  #define RSSI_STEPS       -50,-60,-70,-80
-#endif
+#undef RSSI_STEPS
+#define RSSI_STEPS       -50,-60,-70,-80
 #ifndef CLOCKFONT_MONO
   #define CLOCKFONT_MONO   true     // monospace clock font
 #endif
@@ -465,10 +473,8 @@ The connection tables are located here https://github.com/e2002/yoradio#connecti
   #define COLOR_BITRATE           231, 211,  90
 #endif
 
-#define EN  1
-#define RU  2
 #ifndef L10N_LANGUAGE
-  #define L10N_LANGUAGE EN
+  #define L10N_LANGUAGE PL
 #endif
 
 #ifdef VSPI

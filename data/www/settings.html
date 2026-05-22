@@ -8,10 +8,10 @@
   <link rel="icon" type="image/png" href="elogo.png">
   <link rel="stylesheet" title="base" href="style.css?%VERSION%" type="text/css">
   <link rel="stylesheet" title="base" href="settings.css?%VERSION%" type="text/css">
-  <title>ёRadio - Ustawienia</title>
+  <title>Virtuoso – Ustawienia</title>
   <style> </style>
   </head>
-<body>
+<body class="v-ui">
   <div class="content">
     <h2 class="pagetitle">Ustawienia</h2>
     <div class="navigation group group_system hidden" id="navigation">
@@ -21,6 +21,7 @@
       <div class="navitem group group_timezone hidden" data-target="group_timezone">strefa czasu</div>
       <div class="navitem group group_wifi hidden" data-target="group_wifi">Wi‑Fi</div>
       <div class="navitem group group_weather hidden" data-target="group_weather">pogoda</div>
+      <div class="navitem group group_calendar hidden" data-target="group_calendar">kalendarz</div>
     </div>
     <div class="playerwrap">
       <div class="settingsirwrap" id="settingscontent"><a name="system"></a>
@@ -29,7 +30,9 @@
           <div class="flex-row">
             <div class="checkbox off nous" id="smartstart">Szybki start</div>
             <div class="checkbox off nous" id="audioinfo">Informacje audio</div>
+            <div class="checkbox off nous" id="telemetry">Podgląd na żywo (może przycinać)</div>
             <div class="checkbox off nous group group_vu hidden" id="vumeter">Wskaźnik VU</div>
+            <div class="checkbox off nous group group_vu hidden" id="vumeter_parallel">Wskaźnik Równoległy</div>
           </div>
           <div class="flex-row">
             <div class="inputwrap">
@@ -45,11 +48,7 @@
             </div>
             <div class="button apply hlbutton" data-name="rebootmdns" style=" margin-top: 24px; height: 37px;">zapisz</div>
           </div>
-          <div class="row-title"><span>aktualizacja</span></div>
-          <div class="flex-row last">
-            <div class="button apply" data-name="fwupdate" id="fwupdate">Firmware</div>
-            <div class="button apply" data-name="webboard" id="webboard">WWW</div>
-          </div> 
+ 
         </section><a name="screen"></a>
         <section class="group group_display group_oled group_nextion hidden" id="group_display">
           <div class="title"><span>ekran</span></div><div class="reset" data-name="screen"></div>
@@ -57,9 +56,7 @@
             <div class="checkbox off nous group group_tft hidden" id="flipscreen">Obróć ekran</div>
             <div class="checkbox off nous group group_tft hidden" id="invertdisplay">Odwróć kolory</div>
             <div class="checkbox on nous group group_brightness group_oled hidden" id="screenon">Włącz</div>
-          </div>
-          <div class="flex-row group group_tft group_oled group_nextion hidden">
-            <div class="checkbox off nous" id="numplaylist">numerowana lista</div>
+            <div class="checkbox off nous group group_tft group_oled group_nextion hidden" id="numplaylist">numerowana lista</div>
           </div>
           <div class="flex-row group group_brightness hidden">
             <div class="inputwrap">
@@ -133,12 +130,12 @@
           </div>
           <div class="flex-row group group_ir hidden">
             <div class="inputwrap">
-              <span class="inputtitle">tolerancja IR [<a href="https://crankyoldgit.github.io/IRremoteESP8266/doxygen/html/" target="_blank">docs</a>]</span>
+              <span class="inputtitle">tolerancja IR [<a href="https://crankyoldgit.github.io/IRremoteESP8266/doxygen/html/" target="_blank">PORADNIK</a>]</span>
               <span class="inputinfo" id="slirtlpinfo">0</span>
               <input type="range" id="slirtlp" class="slider" data-slaveid="slirtlpinfo" name="irtlp" min="10" max="80" value="0">
             </div>
           </div>
-          <div class="flex-row group group_ir last hidden">
+          <div class="flex-row center group group_ir last hidden">
             <div class="button apply" data-name="setupir">Rejestrator IR</div>
           </div>
         </section><a name="timezone"></a>
@@ -146,7 +143,7 @@
           <div class="title"><span>strefa czasu</span></div><div class="reset" data-name="timezone"></div>
           <div class="flex-row">
             <div class="inputwrap">
-              <span class="inputtitle">godziny</span>
+              <span class="inputtitle">godziny (zima)</span>
               <input type="number" id="tzhour" class="textinput" name="tzhour" value="" maxlength="3" min="-12" max="14" />
             </div>
             <div class="inputwrap">
@@ -164,7 +161,10 @@
               <input type="text" id="sntp2" class="textinput" name="sntp2" value="" maxlength="34" />
             </div>
           </div>
-          <div class="flex-row last">
+          <div class="flex-row center">
+            <div class="checkbox on nous" id="dstauto">automatyczna zmiana czasu lato/zima (UE)</div>
+          </div>
+          <div class="flex-row center last">
             <div class="button apply hlbutton" data-name="applytz" id="applytz">Zastosuj</div>
           </div>
         </section><a name="wifi"></a>
@@ -182,45 +182,45 @@
           </div>
           <div class="flex-row credential">
             <div class="inputwrap">
-              <span class="inputtitle">ssid</span>
+              <span class="inputtitle">SSID</span>
               <input type="text" id="ssid1" class="textinput" name="ssid" maxlength="30" autocomplete="off" />
             </div>
             <div class="inputwrap">
-              <span class="inputtitle">pass</span>
+              <span class="inputtitle">hasło</span>
               <input type="text" id="pass1" class="textinput" name="pass" value="" placeholder="**********" maxlength="40" autocomplete="off" readonly="readonly" data-pass="" onfocus="this.removeAttribute('readonly');" />
             </div>
           </div>
           <div class="flex-row credential">
             <div class="inputwrap">
-              <span class="inputtitle">ssid</span>
+              <span class="inputtitle">SSID</span>
               <input type="text" id="ssid2" class="textinput" name="ssid" value="" maxlength="30" autocomplete="off" />
             </div>
             <div class="inputwrap">
-              <span class="inputtitle">pass</span>
+              <span class="inputtitle">hasło</span>
               <input type="text" id="pass2" class="textinput" name="pass" value="" placeholder="**********" maxlength="40" autocomplete="off" readonly="readonly" data-pass="" onfocus="this.removeAttribute('readonly');" />
             </div>
           </div>
           <div class="flex-row credential">
             <div class="inputwrap">
-              <span class="inputtitle">ssid</span>
+              <span class="inputtitle">SSID</span>
               <input type="text" id="ssid3" class="textinput" name="ssid" value="" maxlength="30" autocomplete="off" />
             </div>
             <div class="inputwrap">
-              <span class="inputtitle">pass</span>
+              <span class="inputtitle">hasło</span>
               <input type="text" id="pass3" class="textinput" name="pass" value="" placeholder="**********" maxlength="40" autocomplete="off" readonly="readonly" data-pass="" onfocus="this.removeAttribute('readonly');" />
             </div>
           </div>
           <div class="flex-row credential">
             <div class="inputwrap">
-              <span class="inputtitle">ssid</span>
+              <span class="inputtitle">SSID</span>
               <input type="text" id="ssid4" class="textinput" name="ssid" value="" maxlength="30" autocomplete="off" />
             </div>
             <div class="inputwrap">
-              <span class="inputtitle">pass</span>
+              <span class="inputtitle">hasło</span>
               <input type="text" id="pass4" class="textinput" name="pass" value="" placeholder="**********" maxlength="40" autocomplete="off" readonly="readonly" data-pass="" onfocus="this.removeAttribute('readonly');" />
             </div>
           </div>
-          <div class="flex-row last">
+          <div class="flex-row center last">
             <input id="file-upload" type="file" accept=".txt, .csv" hidden/>
             <div class="button group group_system hidden" data-name="wifiexport">Eksportuj</div>
             <div class="button hlbutton" data-name="wifiupload">Zapisz i uruchom ponownie</div>
@@ -247,14 +247,62 @@
               <input type="text" id="weatherkey" class="textinput" name="weatherkey" value="" />
             </div>
           </div>
-          <div class="flex-row last">
+          <div class="flex-row center last">
             <div class="button apply hlbutton" data-name="applyweather">Zastosuj</div>
           </div>
+        </section><a name="calendar"></a>
+        <section class="group group_calendar hidden" id="group_calendar">
+          <div class="title"><span>Kalendarz</span></div><div class="reset" data-name="calendar"></div>
+          <div class="flex-row center">
+            <div class="checkbox off nous" id="showcalendar">wydarzenia w wygaszaczu</div>
+          </div>
+          <div class="flex-row">
+            <div class="inputwrap">
+              <span class="inputtitle">adres ICS</span>
+              <input type="text" id="calendarics" class="textinput" name="calendarics" value="" />
+            </div>
+          </div>
+          <div class="flex-row center last">
+            <div class="button apply hlbutton" data-name="applycalendar" id="applycalendar">Zastosuj</div>
+          </div>
         </section><a name="controls"></a>
+        <!-- Sekcja giełdy została ukryta na prośbę użytkownika -->
+        <div class="hr">&nbsp;</div>
       </div>
     </div><!--playerwrap-->
-    <div class="button apply done group group_system hidden" data-name="settingsdone" id="settingsdone">gotowe</div>
-    <div id="copy">powered by <a target="_blank" href="https://github.com/e2002/yoradio/">ёRadio</a> | v%VERSION%</div>
+    <div class="button apply done group group_system hidden" data-name="settingsdone" id="settingsdone">GOTOWE</div>
+    <div id="copy">napędzane przez <a target="_blank" href="https://github.com/e2002/yoradio/">ёRadio</a> | v%VERSION%</div>
   </div>
   <script src="script.js?%VERSION%"></script>
+  <script src="telemetry.js?%VERSION%&ui=20260321a"></script>
+  <script>
+    (function(){
+      var el = document.getElementById('dstauto');
+      if(!el) return;
+      function setOn(on){
+        if(on) el.classList.add('on'); else el.classList.remove('on');
+      }
+      function getOn(){
+        return el.classList.contains('on');
+      }
+      function refresh(){
+        fetch('/api/dstauto', {cache:'no-store'})
+          .then(function(r){ return r.json(); })
+          .then(function(j){ setOn(!!(j && j.dstauto)); })
+          .catch(function(){});
+      }
+      function persist(){
+        var en = getOn() ? 1 : 0;
+        fetch('/api/dstauto?en=' + en, {cache:'no-store'})
+          .then(function(r){ return r.json(); })
+          .then(function(j){ setOn(!!(j && j.dstauto)); })
+          .catch(function(){});
+      }
+      el.addEventListener('click', function(){
+        setOn(!getOn());
+        persist();
+      }, true);
+      refresh();
+    })();
+  </script>
 </body>

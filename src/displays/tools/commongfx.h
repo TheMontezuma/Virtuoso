@@ -12,7 +12,7 @@
     void printClock(){}
     void printClock(uint16_t top, uint16_t rightspace, uint16_t timeheight, bool redraw);
     void clearClock();
-    char* utf8Rus(const char* str, bool uppercase);
+    char* utf8PL(const char* str, bool uppercase);
     void drawPlaylist(uint16_t currentItem);
     void loop(bool force=false);
     void charSize(uint8_t textsize, uint8_t& width, uint16_t& height);

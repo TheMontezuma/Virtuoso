@@ -29,6 +29,21 @@
 #include "SSD1322.h"
 //#include "splash.h"
 
+#if defined(ESP32)
+  #include "freertos/FreeRTOS.h"
+  #include "freertos/semphr.h"
+  static SemaphoreHandle_t g_ssd1322Mutex = NULL;
+  static inline void ssd1322_lock() {
+    if (g_ssd1322Mutex) xSemaphoreTakeRecursive(g_ssd1322Mutex, portMAX_DELAY);
+  }
+  static inline void ssd1322_unlock() {
+    if (g_ssd1322Mutex) xSemaphoreGiveRecursive(g_ssd1322Mutex);
+  }
+#else
+  static inline void ssd1322_lock() {}
+  static inline void ssd1322_unlock() {}
+#endif
+
 #define ssd1322_swap(a, b) \
   (((a) ^= (b)), ((b) ^= (a)), ((a) ^= (b))) ///< No-temp-var swap operation
 
@@ -46,6 +61,7 @@
 #endif
 
 #define TRANSACTION_START   \
+  ssd1322_lock();          \
   if(spi) {                \
     SPI_TRANSACTION_START; \
   }                        \
@@ -54,7 +70,8 @@
   SSD1322_DESELECT;        \
   if(spi) {                \
     SPI_TRANSACTION_END;   \
-  }
+  }                        \
+  ssd1322_unlock();
 
 /*!
     @brief  Constructor for SPI SSD1306 displays, using native hardware SPI.
@@ -170,6 +187,10 @@ boolean Jamis_SSD1322::begin(boolean reset, boolean periphBegin) {
   // Note: The SSD1322 has 4 bit grayscale color.
   if((!buffer) && !(buffer = (uint8_t *)malloc( WIDTH * ((HEIGHT) / 2) )))
     return false;
+
+#if defined(ESP32)
+  if (!g_ssd1322Mutex) g_ssd1322Mutex = xSemaphoreCreateRecursiveMutex();
+#endif
 
   clearDisplay();
 
@@ -314,8 +335,10 @@ void Jamis_SSD1322::drawPixel(int16_t x, int16_t y, uint16_t color) {
       break;
      default: break;
     }
-    buffer[(x >> 1) + (y)*WIDTH/2] &= (x % 2) ? 0xF0 : 0x0F;
-    buffer[(x >> 1) + (y)*WIDTH/2] |=  (color << (!(x & 1) * 4) );
+    uint8_t c = (uint8_t)(color & 0x0F);
+    uint16_t idx = (uint16_t)((x >> 1) + (y)*WIDTH/2);
+    buffer[idx] &= (x & 1) ? 0xF0 : 0x0F;
+    buffer[idx] |= (uint8_t)(c << (!(x & 1) * 4));
   }
 }
 
@@ -389,12 +412,16 @@ void Jamis_SSD1322::drawFastHLineInternal(
       w = (WIDTH - x);
     }
     if(w > 0) { // Proceed only if width is positive
-      // NOTE: This is _not_ fast. But with 4bit packing, I just want this done.
       uint16_t yOffset = (y)*WIDTH/2;
-      uint8_t b1 = (x % 2) ? 0xF0 : 0x0F;
+      uint8_t c = (uint8_t)(color & 0x0F);
       while(w--) {
-        buffer[((x + w) >> 1) + yOffset] &= b1;
-        buffer[((x + w) >> 1) + yOffset] |=  (color << (!((x + w) & 1) * 4) );
+        int16_t px = x + w;
+        uint16_t idx = (uint16_t)((px >> 1) + yOffset);
+        if (px & 1) {
+          buffer[idx] = (buffer[idx] & 0xF0) | c;
+        } else {
+          buffer[idx] = (buffer[idx] & 0x0F) | (uint8_t)(c << 4);
+        }
       }
     }
   }
@@ -461,7 +488,8 @@ void Jamis_SSD1322::drawFastVLineInternal(
 
       //buffer[((x + w) >> 1) + yOffset] |=  (color << (!(w & 1) * 4) );
       uint16_t xOffset = (x >> 1);
-      uint16_t mask = (color << (!(x & 1) * 4) );
+      uint8_t c = (uint8_t)(color & 0x0F);
+      uint8_t mask = (uint8_t)(c << (!(x & 1) * 4));
       uint8_t b1 = (x % 2) ? 0xF0 : 0x0F;
       while(__h--) {
         //Serial.printf("xOffset + (__y+__h)*WIDTH/2=%d, WIDTH=%d\n", xOffset + (__y+__h)*WIDTH/2, WIDTH);
@@ -472,6 +500,13 @@ void Jamis_SSD1322::drawFastVLineInternal(
       
     } // endif positive height
   } // endif x in bounds
+}
+
+void Jamis_SSD1322::writeFillRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t color) {
+  if (w <= 0 || h <= 0) return;
+  for (int16_t i = 0; i < h; i++) {
+    drawFastHLine(x, y + i, w, color);
+  }
 }
 
 /*!
@@ -554,6 +589,20 @@ void Jamis_SSD1322::display(void) {
 
 void Jamis_SSD1322::invertDisplay(boolean flag) {
     ssd1322_command(flag ? SSD1322_INVERSEDISPLAY : SSD1322_NORMALDISPLAY);
+}
+
+void Jamis_SSD1322::setContrast(uint8_t contrastCurrent) {
+  TRANSACTION_START
+  ssd1322_command1(0xC1);
+  ssd1322_data1(contrastCurrent);
+  TRANSACTION_END
+}
+
+void Jamis_SSD1322::setMasterContrast(uint8_t masterContrast) {
+  TRANSACTION_START
+  ssd1322_command1(0xC7);
+  ssd1322_data1(masterContrast & 0x0F);
+  TRANSACTION_END
 }
 
 #endif //if DSP_MODEL==DSP_SSD1322

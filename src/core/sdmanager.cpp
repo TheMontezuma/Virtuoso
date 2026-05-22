@@ -53,46 +53,49 @@ bool SDManager::_checkNoMedia(const char* path){
 }
 
 bool SDManager::_endsWith (const char* base, const char* str) {
-  int slen = strlen(str) - 1;
-  const char *p = base + strlen(base) - 1;
-  while(p > base && isspace(*p)) p--;
-  p -= slen;
-  if (p < base) return false;
-  return (strncmp(p, str, slen) == 0);
+  if (!base || !str) return false;
+  size_t baseLen = strlen(base);
+  while (baseLen > 0 && isspace(static_cast<unsigned char>(base[baseLen - 1]))) baseLen--;
+  const size_t suffixLen = strlen(str);
+  if (suffixLen == 0 || suffixLen > baseLen) return false;
+  const char* p = base + (baseLen - suffixLen);
+  for (size_t i = 0; i < suffixLen; i++) {
+    char a = p[i];
+    char b = str[i];
+    if (a >= 'A' && a <= 'Z') a = a - 'A' + 'a';
+    if (b >= 'A' && b <= 'Z') b = b - 'A' + 'a';
+    if (a != b) return false;
+  }
+  return true;
 }
 
 void SDManager::listSD(File &plSDfile, File &plSDindex, const char* dirname, uint8_t levels) {
     File root = sdman.open(dirname);
     if (!root) {
-        Serial.println("##[ERROR]#\tFailed to open directory");
+        Serial.println("##[ERROR]#\tNie udało się otworzyć katalogu");
         return;
     }
     if (!root.isDirectory()) {
-        Serial.println("##[ERROR]#\tNot a directory");
+        Serial.println("##[ERROR]#\tTo nie jest katalog");
         return;
     }
 
     uint32_t pos = 0;
-    char* filePath;
     while (true) {
         vTaskDelay(2);
         player.loop();
         bool isDir;
         String fileName = root.getNextFileName(&isDir);
         if (fileName.isEmpty()) break;
-        filePath = (char*)malloc(fileName.length() + 1);
-        if (filePath == NULL) {
-            Serial.println("Memory allocation failed");
-            break;
-        }
-        strcpy(filePath, fileName.c_str());
-        const char* fn = strrchr(filePath, '/') + 1;
+        const int slash = fileName.lastIndexOf('/');
+        const char* filePath = fileName.c_str();
+        const char* fn = (slash >= 0) ? (filePath + slash + 1) : filePath;
         if (isDir) {
             if (levels && !_checkNoMedia(filePath)) {
                 listSD(plSDfile, plSDindex, filePath, levels - 1);
             }
         } else {
-            if (_endsWith(strlwr((char*)fn), ".mp3") || _endsWith(fn, ".m4a") || _endsWith(fn, ".aac") ||
+            if (_endsWith(fn, ".mp3") || _endsWith(fn, ".m4a") || _endsWith(fn, ".aac") ||
                 _endsWith(fn, ".wav") || _endsWith(fn, ".flac")) {
                 pos = plSDfile.position();
                 plSDfile.printf("%s\t%s\t0\n", fn, filePath);
@@ -103,7 +106,6 @@ void SDManager::listSD(File &plSDfile, File &plSDindex, const char* dirname, uin
                 if (_sdFCount % 64 == 0) Serial.println();
             }
         }
-        free(filePath);
     }
     root.close();
 }
@@ -126,5 +128,3 @@ void SDManager::indexSDPlaylist() {
   delay(50);
 }
 #endif
-
-

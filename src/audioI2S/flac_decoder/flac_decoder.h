@@ -8,7 +8,7 @@
  *
  *  Restrictions:
  *  blocksize must not exceed 8192
- *  bits per sample must be 8 or 16
+ *  bits per sample must be 8, 16 or 24 (24-bit is downshifted to 16-bit output)
  *  num Channels must be 1 or 2
  *
  *
@@ -151,6 +151,7 @@ int      FLACparseOggHeader(unsigned char *buf);
 bool     FLACDecoder_AllocateBuffers(void);
 void     FLACDecoder_ClearBuffer();
 void     FLACDecoder_FreeBuffers();
+bool     FLACDecoder_IsInit();
 void     FLACSetRawBlockParams(uint8_t Chans, uint32_t SampRate, uint8_t BPS, uint32_t tsis, uint32_t AuDaLength);
 void     FLACDecoderReset();
 int8_t   FLACDecode(uint8_t *inbuf, int *bytesLeft, short *outbuf);
@@ -171,5 +172,3 @@ int8_t   decodeFixedPredictionSubframe(uint8_t predOrder, uint8_t sampleDepth, u
 int8_t   decodeLinearPredictiveCodingSubframe(int lpcOrder, int sampleDepth, uint8_t ch);
 int8_t   decodeResiduals(uint8_t warmup, uint8_t ch);
 void     restoreLinearPrediction(uint8_t ch, uint8_t shift);
-
-

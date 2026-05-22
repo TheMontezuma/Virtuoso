@@ -82,6 +82,27 @@
 #define _IR_LOCALE_ en-AU
 #endif  // _IR_LOCALE_
 
+#undef _IR_ENABLE_DEFAULT_
+#define _IR_ENABLE_DEFAULT_ false
+#define DECODE_NEC true
+#define DECODE_RC5 true
+#define DECODE_RC6 true
+#define DECODE_SONY true
+#define DECODE_SAMSUNG true
+#define DECODE_PANASONIC true
+#define DECODE_JVC true
+#define DECODE_HASH true
+#define SEND_NEC false
+#define SEND_RC5 false
+#define SEND_RC6 false
+#define SEND_SONY false
+#define SEND_SAMSUNG false
+#define SEND_PANASONIC false
+#define SEND_JVC false
+#define SEND_RCMM false
+#define SEND_SAMSUNG36 false
+#define SEND_SAMSUNG_AC false
+
 // Do we enable all the protocols by default (true), or disable them (false)?
 // This allows users of the library to disable or enable all protocols at
 // compile-time with `-D_IR_ENABLE_DEFAULT_=true` or

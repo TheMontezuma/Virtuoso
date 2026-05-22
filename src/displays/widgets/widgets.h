@@ -96,6 +96,7 @@ public:
   }
   void unlock() {
     _locked = false;
+    if (_active) _draw();
   }
   bool locked() {
     return _locked;
@@ -120,6 +121,9 @@ public:
     _reset();
     _draw();
   }
+  virtual void setTextSize(uint16_t textsize) {
+    _config.textsize = textsize;
+  }
 protected:
   bool _active, _moved, _locked;
   uint16_t _fgcolor, _bgcolor, _width;
@@ -141,6 +145,7 @@ public:
   void setText(const char *txt);
   void setText(int val, const char *format);
   void setText(const char *txt, const char *format);
+  void setTextSize(uint16_t textsize) override;
   bool uppercase() {
     return _uppercase;
   }
@@ -153,6 +158,13 @@ protected:
 protected:
   void _draw();
   uint16_t _realLeft();
+};
+
+class RssiWidget : public TextWidget {
+public:
+  using TextWidget::TextWidget;
+protected:
+  void _draw();
 };
 
 class FillWidget : public Widget {
@@ -178,6 +190,7 @@ public:
   void loop();
   void setText(const char *txt);
   void setText(const char *txt, const char *format);
+  void setTextSize(uint16_t textsize) override;
 private:
   char *_sep;
   char *_window;
@@ -271,7 +284,7 @@ private:
 
 class ClockWidget : public Widget {
 public:
-  void draw();
+  void draw(bool redraw = false);
 protected:
   void _draw();
   void _clear();

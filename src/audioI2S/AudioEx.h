@@ -147,7 +147,7 @@ public:
     bool     havePSRAM() { return m_f_psram; };
 
 protected:
-    size_t   m_buffSizePSRAM    = 300000;   // most webstreams limit the advance to 100...300Kbytes
+    size_t   m_buffSizePSRAM    = 900000;   // most webstreams limit the advance to 100...300Kbytes
     //size_t   m_buffSizeRAM      = 1600 * 5;
     size_t   m_buffSizeRAM      = 1600 * AUDIOBUFFER_MULTIPLIER2;
     size_t   m_buffSize         = 0;
@@ -517,6 +517,7 @@ private:
     uint8_t         m_flacBitsPerSample = 0;        // bps should be 16
     uint8_t         m_flacNumChannels = 0;          // can be read out in the FLAC file header
     uint32_t        m_flacSampleRate = 0;           // can be read out in the FLAC file header
+    uint8_t         m_flacDownsampleFactor = 1;
     uint16_t        m_flacMaxFrameSize = 0;         // can be read out in the FLAC file header
     uint16_t        m_flacMaxBlockSize = 0;         // can be read out in the FLAC file header
     uint32_t        m_flacTotalSamplesInStream = 0; // can be read out in the FLAC file header

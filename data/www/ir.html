@@ -6,26 +6,179 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <link rel="apple-touch-icon" type="image/png" href="elogo.png">
   <link rel="icon" type="image/png" href="elogo.png">
-  <link rel="stylesheet" title="base" href="style.css?%VERSION%" type="text/css">
-  <link rel="stylesheet" title="base" href="ir.css?%VERSION%" type="text/css">
-  <title>ёRadio - Rejestrator IR</title>
-  <style> </style>
+  <link rel="stylesheet" title="base" href="style.css?%VERSION%&ui=20260318" type="text/css">
+  <link rel="stylesheet" title="base" href="ir.css?%VERSION%&ui=20260318" type="text/css">
+  <title>Virtuoso – Rejestrator IR</title>
+  <style>
+    body{margin:0}
+    .content{max-width:1120px}
+    .irtitle{
+      color:rgba(0,229,255,.9);
+      letter-spacing:.12em;
+      text-transform:uppercase;
+      font-size:18px;
+      font-weight:600;
+      max-width:none;
+    }
+    #irremote{
+      position:relative;
+      border:1px solid rgba(0,229,255,.18);
+      background:rgba(26,26,26,.55);
+      backdrop-filter:blur(12px);
+      box-shadow:0 0 0 1px rgba(0,0,0,.22), 0 0 30px rgba(0,229,255,.08);
+    }
+    .irbutton.irpower{
+      position:absolute;
+      top:10px;
+      left:10px;
+      z-index:2;
+      width:54px;
+      height:54px;
+      line-height:50px;
+      background:rgba(0,229,255,.12);
+      border-color:rgba(0,229,255,.28);
+      color:rgba(0,229,255,.92);
+    }
+    .irbutton.irmute{
+      position:absolute;
+      top:10px;
+      right:10px;
+      z-index:2;
+      width:54px;
+      height:54px;
+      line-height:50px;
+      background:rgba(0,229,255,.12);
+      border-color:rgba(0,229,255,.28);
+      color:rgba(0,229,255,.92);
+    }
+    .irbutton{
+      background:rgba(20,20,20,.7);
+      border:1px solid rgba(38,38,38,.9);
+      color:rgba(230,230,230,.92);
+      font-family:"Segoe UI Symbol",Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
+      transition:border-color .15s ease, box-shadow .15s ease, transform .05s ease, background-color .15s ease, color .15s ease;
+    }
+    .irbutton.blue{
+      background:rgba(0,229,255,.12);
+      border-color:rgba(0,229,255,.28);
+      color:rgba(0,229,255,.92);
+    }
+    .irbutton.red{
+      background:rgba(239,68,68,.12);
+      border-color:rgba(239,68,68,.28);
+      color:rgba(239,68,68,.92);
+    }
+    .irbutton:hover, .irbutton:active, .irbutton.active{
+      background:rgba(0,229,255,.12);
+      border-color:rgba(0,229,255,.55);
+      box-shadow:0 0 0 1px rgba(0,229,255,.14), 0 0 18px rgba(0,229,255,.1);
+      color:rgba(0,229,255,.92);
+    }
+    #irform{
+      border:1px solid rgba(0,229,255,.18);
+      border-radius:12px;
+      background:rgba(26,26,26,.55);
+      backdrop-filter:blur(12px);
+      box-shadow:0 0 0 1px rgba(0,0,0,.22), 0 0 30px rgba(0,229,255,.08);
+      padding:16px;
+    }
+    #irstartrecord h3{color:rgba(0,229,255,.9)}
+    #done_ir, #back_ir{max-width:160px;margin-left:auto;margin-right:auto}
+    #done_ir, #back_ir{
+      border-color:rgba(0,229,255,.45);
+      background:rgba(0,229,255,.12);
+      color:rgba(0,229,255,.92);
+    }
+    #done_ir:hover, #back_ir:hover{
+      border-color:rgba(0,229,255,.7);
+      box-shadow:0 0 0 1px rgba(0,229,255,.14), 0 0 22px rgba(0,229,255,.1);
+      background:rgba(0,229,255,.18);
+    }
+    #irrecord h3{
+      margin:0 0 12px 0;
+      text-align:center;
+      color:rgba(0,229,255,.9);
+      letter-spacing:.08em;
+      text-transform:uppercase;
+      font-size:14px;
+    }
+    #irrecordtitle span{
+      background:rgba(0,229,255,.12);
+      color:rgba(0,229,255,.92);
+      border:1px solid rgba(0,229,255,.28);
+      box-shadow:0 0 0 1px rgba(0,0,0,.22), 0 0 18px rgba(0,229,255,.1);
+    }
+    .irradio span{
+      border-color:rgba(0,229,255,.45) !important;
+      background:#0A0A0A !important;
+    }
+    .irradio span:hover{background:#111 !important}
+    .irradio.active span{background:#111 !important}
+    .irradio.active span:after{background:rgba(0,229,255,.92) !important}
+    .irrecordvalue{
+      background:#0A0A0A !important;
+      border-color:rgba(38,38,38,.9) !important;
+      color:rgba(156,163,175,.9) !important;
+    }
+    .irrecordvalue.active{
+      border-color:rgba(0,229,255,.6) !important;
+      color:rgba(0,229,255,.92) !important;
+      box-shadow:0 0 0 1px rgba(0,229,255,.14), 0 0 18px rgba(0,229,255,.1);
+    }
+    #protocol{color:rgba(156,163,175,.9)}
+    #back_ir{
+      display:block !important;
+      margin:18px auto 0 auto !important;
+      transform:none !important;
+    }
+    .irmenu{
+      background:rgba(20,20,20,.7);
+      border:1px solid rgba(38,38,38,.9);
+      color:rgba(230,230,230,.92);
+      font-family:"Segoe UI Symbol",Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
+      transition:border-color .15s ease, box-shadow .15s ease, transform .05s ease, background-color .15s ease, color .15s ease;
+      width:54px;
+      height:54px;
+      border-radius:27px;
+      box-sizing:border-box;
+      font-size:24px;
+      font-weight:700;
+      text-align:center;
+      line-height:50px;
+      cursor:pointer;
+      user-select:none;
+    }
+    .irmenu.blue{
+      background:rgba(0,229,255,.12);
+      border-color:rgba(0,229,255,.28);
+      color:rgba(0,229,255,.92);
+    }
+    .irmenu:hover, .irmenu:active, .irmenu.active{
+      background:rgba(0,229,255,.12);
+      border-color:rgba(0,229,255,.55);
+      box-shadow:0 0 0 1px rgba(0,229,255,.14), 0 0 18px rgba(0,229,255,.1);
+      color:rgba(0,229,255,.92);
+    }
+  </style>
   </head>
-<body>
+<body class="v-ui">
   <div class="content">
     <h2 class="irtitle">Rejestrator IR</h2>
     <div class="playerwrap">
       <div class="irwrap">
         <div id="irremote">
-          <div class="irblank"></div><div class="irbutton blue">&#9650;</div><div class="irblank"></div>
-          <div class="irbutton blue">&#9194;</div><div class="irbutton red">&#9199;</div><div class="irbutton blue">&#9193;</div>
-          <div class="irblank"></div><div class="irbutton blue">&#9660;</div><div class="irblank"></div>
-          <div class="irbutton">1</div><div class="irbutton">2</div><div class="irbutton">3</div>
-          <div class="irbutton">4</div><div class="irbutton">5</div><div class="irbutton">6</div>
-          <div class="irbutton">7</div><div class="irbutton">8</div><div class="irbutton">9</div>
-          <div class="irbutton red">*</div><div class="irbutton">0</div><div class="irbutton red">#</div>
-        </div><!--irremote-->
-          <div id="irform">
+          <div class="irblank"></div><div class="irbutton blue" data-slot="0">&#9650;</div><div class="irblank"></div>
+          <div class="irbutton blue" data-slot="1">&#9198;</div><div class="irbutton red" data-slot="2">&#9199;</div><div class="irbutton blue" data-slot="3">&#9197;</div>
+          <div class="irblank"></div><div class="irbutton blue" data-slot="4">&#9660;</div><div class="irblank"></div>
+          <div class="irbutton blue" data-slot="18">⌂</div><div class="irbutton blue" data-slot="21">≡</div><div class="irbutton blue" data-slot="19">↩</div>
+          <div class="irbutton" data-slot="5">1</div><div class="irbutton" data-slot="6">2</div><div class="irbutton" data-slot="7">3</div>
+          <div class="irbutton" data-slot="8">4</div><div class="irbutton" data-slot="9">5</div><div class="irbutton" data-slot="10">6</div>
+          <div class="irbutton" data-slot="11">7</div><div class="irbutton" data-slot="12">8</div><div class="irbutton" data-slot="13">9</div>
+          <div class="irbutton red" data-slot="14">BT</div><div class="irbutton" data-slot="15">0</div><div class="irbutton red" data-slot="16">x</div>
+          <div class="irbutton irpower" data-slot="17">⏻</div>
+          <div class="irbutton irmute" data-slot="20">🔇</div>
+        </div>
+        <div id="irform">
           <div id="irstartrecord"><h3>Witaj w Rejestratorze IR!</h3>
           Naciśnij przycisk po lewej,<br />aby zarejestrować kod.
           <a href="/" class="button" id="done_ir">Gotowe</a>
@@ -40,10 +193,10 @@
             <div id="protocol"></div>
             <div class="button" id="back_ir" onclick="backRecord()">Wróć</div>
           </div>
-        </div><!--irform-->
-      </div><!--irwrap-->
-    </div><!--playerwrap-->
-    <div id="copy">powered by <a target="_blank" href="https://github.com/e2002/yoradio/">ёRadio</a> | v%VERSION%</div>
+        </div>
+      </div>
+    </div>
+    <div id="copy">napędzane przez <a target="_blank" href="https://github.com/e2002/yoradio/">ёRadio</a> | v%VERSION%</div>
   </div>
-  <script src="ir.js?%VERSION%"></script>
+  <script src="ir.js?%VERSION%&ui=20260319c"></script>
 </body>

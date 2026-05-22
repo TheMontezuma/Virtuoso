@@ -5,7 +5,7 @@
 #include "../AsyncWebServer/ESPAsyncWebServer.h"
 #include "AsyncUDP.h"
 
-enum requestType_e : uint8_t  { PLAYLIST=1, STATION=2, STATIONNAME=3, ITEM=4, TITLE=5, VOLUME=6, NRSSI=7, BITRATE=8, MODE=9, EQUALIZER=10, BALANCE=11, PLAYLISTSAVED=12, GETMODE=13, GETINDEX=14, GETACTIVE=15, GETSYSTEM=16, GETSCREEN=17, GETTIMEZONE=18, GETWEATHER=19, GETCONTROLS=20, DSPON=21, SDPOS=22, SDLEN=23, SDSNUFFLE=24, SDINIT=25, GETPLAYERMODE=26, CHANGEMODE=27 };
+enum requestType_e : uint8_t  { PLAYLIST=1, STATION=2, STATIONNAME=3, ITEM=4, TITLE=5, VOLUME=6, NRSSI=7, BITRATE=8, MODE=9, EQUALIZER=10, BALANCE=11, PLAYLISTSAVED=12, GETMODE=13, GETINDEX=14, GETACTIVE=15, GETSYSTEM=16, GETSCREEN=17, GETTIMEZONE=18, GETWEATHER=19, GETCONTROLS=20, DSPON=21, SDPOS=22, SDLEN=23, SDSNUFFLE=24, SDINIT=25, GETPLAYERMODE=26, CHANGEMODE=27, GETSTOCKS=28, GETCALENDAR=29, VULEVEL=30 };
 enum import_e      : uint8_t  { IMDONE=0, IMPL=1, IMWIFI=2 };
 const char emptyfs_html[] PROGMEM = R"(
 <!DOCTYPE html><html>
@@ -14,11 +14,20 @@ const char emptyfs_html[] PROGMEM = R"(
         <meta charset="UTF-8">
         <link rel="icon" href="data:;base64,iVBORw0KGgo=">
         <title>Virtuoso - Wgrywanie plików WWW</title>
-        <style>body{background-color:#000;color:#00c853;font-size:20px;}
+        <style>
+:root{
+  --bg:#0D0D0D;
+  --surface:#1A1A1A;
+  --border:#262626;
+  --accent:#00E5FF;
+  --text:#E6E6E6;
+  --muted:#9CA3AF;
+}
+body{background-color:var(--bg);color:var(--text);font-size:20px;}
 hr{
     margin:20px 0;
     border:0; 
-    border-top:#555 1px solid;
+    border-top:var(--border) 1px solid;
 } 
 p{
     text-align:center;
@@ -31,14 +40,14 @@ section{
      margin:0 auto 30px auto;
     }
 input[type=file]{
-    color:#ccc;
+    color:var(--muted);
 } 
 input[type=file]::file-selector-button, input[type=submit]{
-    border:2px solid #00c853;
-    color:#000;
+    border:1px solid var(--border);
+    color:#001014;
     padding:6px 16px;
     border-radius:25px;
-    background-color:#00c853;
+    background-color:var(--accent);
     margin:0 6px;cursor:pointer;
 }
 input[type=submit]{
@@ -47,7 +56,7 @@ input[type=submit]{
     padding:8px 26px;margin-top:10px;
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 } 
-span{color:#ccc}
+span{color:var(--muted)}
 .flex{
     display:flex;
     justify-content: space-around;
@@ -55,15 +64,21 @@ span{color:#ccc}
 }
 input[type=text],input[type=password]{
     width:170px;
-    background:#272727;
-    color:#00c853;
+    background:#0A0A0A;
+    color:var(--text);
     padding:6px 12px;
     font-size:20px;
-    border:#2d2d2d 1px solid;
+    border:var(--border) 1px solid;
     margin:4px 0 0 4px;
     border-radius:4px;
     outline:none;
 }
+input[type=text]:focus,input[type=password]:focus{
+    border-color:rgba(0,229,255,.6);
+    box-shadow:0 0 0 1px rgba(0,229,255,.14), 0 0 18px rgba(0,229,255,.1);
+}
+h2{color:var(--accent);letter-spacing:.08em;text-transform:uppercase;}
+label{color:var(--muted);letter-spacing:.08em;text-transform:uppercase;}
 @media screen and (max-width:480px) {
     section{zoom:0.7;
     -moz-transform:scale(0.7);

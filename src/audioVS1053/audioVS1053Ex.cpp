@@ -1480,6 +1480,9 @@ bool Audio::parseContentType(char* ct) {
     enum : int {CT_NONE, CT_MP3, CT_AAC, CT_M4A, CT_WAV, CT_OGG, CT_FLAC, CT_PLS, CT_M3U, CT_ASX,
                 CT_M3U8, CT_TXT, CT_AACP};
 
+    char* semicolon = strchr(ct, ';');
+    if(semicolon) *semicolon = '\0';
+
     strlwr(ct);
     trim(ct);
     m_codec = CODEC_NONE;
@@ -1502,6 +1505,9 @@ bool Audio::parseContentType(char* ct) {
     else if(!strcmp(ct, "audio/x-wav"))      ct_val = CT_WAV;
 
     else if(!strcmp(ct, "audio/flac"))       ct_val = CT_FLAC;
+    else if(!strcmp(ct, "audio/x-flac"))     ct_val = CT_FLAC;
+    else if(!strcmp(ct, "application/flac")) ct_val = CT_FLAC;
+    else if(!strcmp(ct, "application/x-flac")) ct_val = CT_FLAC;
 
     else if(!strcmp(ct, "audio/scpls"))      ct_val = CT_PLS;
     else if(!strcmp(ct, "audio/x-scpls"))    ct_val = CT_PLS;
@@ -1512,6 +1518,8 @@ bool Audio::parseContentType(char* ct) {
     else if(!strcmp(ct, "video/x-ms-asf"))   ct_val = CT_ASX;
 
     else if(!strcmp(ct, "application/ogg"))  ct_val = CT_OGG;
+    else if(!strcmp(ct, "audio/ogg"))        ct_val = CT_OGG;
+    else if(!strcmp(ct, "audio/x-ogg"))      ct_val = CT_OGG;
     else if(!strcmp(ct, "application/vnd.apple.mpegurl")) ct_val = CT_M3U8;
     else if(!strcmp(ct, "application/x-mpegurl")) ct_val =CT_M3U8;
 
@@ -1573,6 +1581,7 @@ bool Audio::parseContentType(char* ct) {
         case CT_TXT: // overwrite text/plain
             if(m_expectedCodec == CODEC_AAC){ m_codec = CODEC_AAC; if(m_f_Log) log_i("set ct from M3U8 to AAC");}
             if(m_expectedCodec == CODEC_MP3){ m_codec = CODEC_MP3; if(m_f_Log) log_i("set ct from M3U8 to MP3");}
+            if(m_expectedCodec == CODEC_FLAC){ m_codec = CODEC_FLAC; if(m_f_Log) log_i("set ct from TXT to FLAC");}
 
             if(m_expectedPlsFmt == FORMAT_ASX){ m_playlistFormat = FORMAT_ASX;  if(m_f_Log) log_i("set playlist format to ASX");}
             if(m_expectedPlsFmt == FORMAT_M3U){ m_playlistFormat = FORMAT_M3U;  if(m_f_Log) log_i("set playlist format to M3U");}

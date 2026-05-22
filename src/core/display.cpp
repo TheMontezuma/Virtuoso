@@ -28,6 +28,12 @@ Page *pages[] = { new Page(), new Page(), new Page(), new Page() };
 #ifndef DSP_TASK_DELAY
 #define DSP_TASK_DELAY pdMS_TO_TICKS(10)
 #endif
+#ifndef DSP_TASK_PRIO
+#define DSP_TASK_PRIO 1
+#endif
+#ifndef DSP_TASK_CORE
+#define DSP_TASK_CORE xPortGetCoreID()
+#endif
 // Wyłączone wymuszanie BITRATE_FULL = false, używamy ustawienia z myoptions.h
 /*
 #if !((DSP_MODEL == DSP_ST7735 && DTYPE == INITR_BLACKTAB) || DSP_MODEL == DSP_SSD1322 || DSP_MODEL == DSP_ST7789 || DSP_MODEL == DSP_ST7796 || DSP_MODEL == DSP_ILI9488 || DSP_MODEL == DSP_ILI9486 || DSP_MODEL == DSP_ILI9341 || DSP_MODEL == DSP_ILI9225)
@@ -39,11 +45,18 @@ TaskHandle_t DspTask;
 QueueHandle_t displayQueue;
 
 void returnPlayer() {
+  if (display.mode() == NUMBERS && display.numOfNextStation > 0) {
+    player.sendCommand({ PR_PLAY, display.numOfNextStation });
+    display.numOfNextStation = 0;
+  }
+  if (display.mode() == STATIONS && display.currentPlItem > 0) {
+    player.sendCommand({ PR_PLAY, display.currentPlItem });
+  }
   display.putRequest(NEWMODE, PLAYER);
 }
 
 void Display::_createDspTask() {
-  xTaskCreatePinnedToCore(loopDspTask, "DspTask", CORE_STACK_SIZE, NULL, 4, &DspTask, !xPortGetCoreID());
+  xTaskCreatePinnedToCore(loopDspTask, "DspTask", CORE_STACK_SIZE, NULL, DSP_TASK_PRIO, &DspTask, DSP_TASK_CORE);
 }
 
 void loopDspTask(void *pvParameters) {
@@ -70,10 +83,10 @@ void Display::init() {
   displayQueue = xQueueCreate(5, sizeof(requestParams_t));
   while (displayQueue == NULL) { ; }
   _createDspTask();
-  while (!_bootStep == 0) { delay(10); }
+  while (_bootStep == 0) { delay(10); }
   //_pager.begin();
   //_bootScreen();
-  Serial.println("done");
+  Serial.println("gotowe");
 }
 
 void Display::_bootScreen() {
@@ -100,6 +113,10 @@ void Display::_buildPager() {
 #endif
 #ifndef HIDE_TITLE2
   _title2 = new ScrollWidget("*", title2Conf, config.theme.title2, config.theme.background);
+#endif
+#ifdef HAS_CALENDAR_CONF
+  _cal1 = new ScrollWidget("*", calendar1Conf, config.theme.weather, config.theme.background);
+  _cal2 = new ScrollWidget("*", calendar2Conf, config.theme.weather, config.theme.background);
 #endif
 #if !defined(DSP_LCD) && DSP_MODEL != DSP_NOKIA5110
 #if DSP_INVERT_TITLE || defined(DSP_OLED)
@@ -128,14 +145,12 @@ void Display::_buildPager() {
   _volip = new TextWidget(iptxtConf, 30, false, config.theme.ip, config.theme.background);
 #endif
 #ifndef HIDE_RSSI
-  _rssi = new TextWidget(rssiConf, 20, false, config.theme.rssi, config.theme.background);
+  _rssi = new RssiWidget(rssiConf, 20, false, config.theme.rssi, config.theme.background);
 #endif
   _nums.init(numConf, 10, false, config.theme.digit, config.theme.background);
 #ifndef HIDE_WEATHER
   _weather = new ScrollWidget("\007", weatherConf, config.theme.weather, config.theme.background);
-#endif
-#ifndef HIDE_WEATHER
-  _stocks = new ScrollWidget("\007", stocksConf, config.theme.weather, config.theme.background);
+  _sstext = new ScrollWidget("*", weatherConf, config.theme.weather, config.theme.background);
 #endif
 
   if (_volbar) _footer.addWidget(_volbar);
@@ -147,7 +162,13 @@ void Display::_buildPager() {
   pages[PG_PLAYER]->addWidget(&_title1);
   if (_title2) pages[PG_PLAYER]->addWidget(_title2);
   if (_weather) pages[PG_SCREENSAVER]->addWidget(_weather);
-  if (_stocks) pages[PG_SCREENSAVER]->addWidget(_stocks);
+#ifndef HIDE_WEATHER
+  if (_sstext) pages[PG_SCREENSAVER]->addWidget(_sstext);
+#endif
+#ifdef HAS_CALENDAR_CONF
+  if (_cal1) pages[PG_SCREENSAVER]->addWidget(_cal1);
+  if (_cal2) pages[PG_SCREENSAVER]->addWidget(_cal2);
+#endif
 
 #if BITRATE_FULL
   _fullbitrate = new BitrateWidget(fullbitrateConf, config.theme.bitrate, config.theme.background);
@@ -263,10 +284,14 @@ void Display::_start() {
   if (_heapbar) _heapbar->lock(!config.store.audioinfo);
 
   if (_weather) _weather->lock(!config.store.showweather);
-  if (_stocks) _stocks->lock(!config.store.showstocks);
+#ifndef HIDE_WEATHER
+  if (_sstext) {
+    _sstext->lock(strlen(config.store.screensaverText) == 0);
+    if (strlen(config.store.screensaverText) > 0) _sstext->setText(config.store.screensaverText);
+  }
+#endif
 
   if (_weather && config.store.showweather) _weather->setText(const_getWeather);
-  if (_stocks && config.store.showstocks) _stocks->setText(const_getStocks);
 
   if (_vuwidget) _vuwidget->lock();
 
@@ -300,11 +325,94 @@ void Display::_swichMode(displayMode_e newmode) {
   //nextion.swichMode(newmode);
   nextion.putRequest({ NEWMODE, newmode });
 #endif
-  if (newmode == _mode) return;
-  if ((network.status != CONNECTED && network.status != SDREADY) && !(newmode == SCREENSAVER || newmode == SCREENBLANK)) return;
+  if (config.getMode() == PM_BLUETOOTH && (newmode == SCREENSAVER || newmode == SCREENBLANK)) return;
+  if (newmode == _mode || (network.status != CONNECTED && network.status != SDREADY)) return;
+  displayMode_e prevMode = _mode;
   _mode = newmode;
   dsp.setScrollId(NULL);
+  if (prevMode == SLEEPING && newmode != SLEEPING) {
+    config.clockOnly = false;
+    if (_weather) _weather->unlock();
+#ifndef HIDE_WEATHER
+    if (_sstext) _sstext->unlock();
+#endif
+#ifdef HAS_CALENDAR_CONF
+    if (_cal1) _cal1->unlock();
+    if (_cal2) _cal2->unlock();
+#endif
+    dsp.clearDsp();
+    _meta.setText("");
+    _title1.setText("");
+    if (_title2) _title2->setText("");
+    if (_bitrate) _bitrate->setText("");
+    if (_rssi) _rssi->setText("");
+    _nums.setText("");
+  }
   if (newmode == PLAYER) {
+    if (config.getMode() == PM_BLUETOOTH) {
+      dsp.clearDsp();
+      numOfNextStation = 0;
+      _returnTicker.detach();
+#ifdef META_MOVE
+      _meta.moveBack();
+#endif
+      _meta.setTextSize(metaConf.widget.textsize);
+      _meta.setAlign(WA_CENTER);
+      _meta.setText("Bluetooth");
+      _nums.setText("");
+      _title1.setTextSize(title1Conf.widget.textsize);
+      _title1.setAlign(WA_CENTER);
+      {
+        uint8_t _cw;
+        uint16_t metaH;
+        dsp.charSize(metaConf.widget.textsize, _cw, metaH);
+        uint16_t secondLineTop = (uint16_t)(metaConf.widget.top + metaH + 6);
+        _title1.moveTo({ 0, secondLineTop, (int16_t)dsp.width() });
+      }
+      _title1.setText("Aktywne");
+      if (_title2) _title2->setText("");
+      if (_bitrate) _bitrate->setText("");
+      if (_fullbitrate) {
+        _fullbitrate->setBitrate(0);
+        _fullbitrate->setFormat(BF_UNCNOWN);
+      }
+      if (_vuwidget) _vuwidget->lock(true);
+      dsp.fillRect(vuConf.left, vuConf.top, (int16_t)dsp.width(), (int16_t)(bandsConf.height * 2 + 6), config.theme.background);
+      if (_weather) _weather->lock(true);
+#ifndef HIDE_WEATHER
+      if (_sstext) _sstext->lock(true);
+#endif
+#ifdef HAS_CALENDAR_CONF
+      if (_cal1) _cal1->lock(true);
+      if (_cal2) _cal2->lock(true);
+#endif
+      if (_volbar) _volbar->lock(true);
+      if (_heapbar) _heapbar->lock(true);
+      if (_voltxt) _voltxt->lock(true);
+      if (_rssi) _rssi->lock(true);
+      if (_bitrate) _bitrate->lock(true);
+      if (_fullbitrate) _fullbitrate->lock(true);
+      config.isScreensaver = false;
+      config.clockOnly = false;
+      _pager.setPage(pages[PG_PLAYER]);
+      _layoutChange(false);
+      config.setDspOn(config.store.dspon, false);
+      pm.on_display_player();
+      return;
+    }
+    _clock.unlock();
+    if (_vuwidget) _vuwidget->lock(!config.store.vumeter);
+    if (_weather) _weather->lock(!config.store.showweather);
+#ifdef HAS_CALENDAR_CONF
+    if (_cal1) _cal1->lock(!config.store.showcalendar);
+    if (_cal2) _cal2->lock(!config.store.showcalendar);
+#endif
+    if (_volbar) _volbar->unlock();
+    if (_heapbar) _heapbar->lock(!config.store.audioinfo);
+    if (_voltxt) _voltxt->unlock();
+    if (_rssi) _rssi->unlock();
+    if (_bitrate) _bitrate->unlock();
+    if (_fullbitrate) _fullbitrate->unlock();
     if (player.isRunning())
       _clock.moveTo(clockMove);
     else
@@ -317,37 +425,78 @@ void Display::_swichMode(displayMode_e newmode) {
 #ifdef META_MOVE
     _meta.moveBack();
 #endif
-    _meta.setAlign(metaConf.widget.align);
-    _meta.setText(config.station.name);
-
     _nums.setText("");
     _nums.setText(config.lastStation(), "%d");
     config.isScreensaver = false;
+    config.clockOnly = false;
     _pager.setPage(pages[PG_PLAYER]);
+    _layoutChange(player.isRunning());
+    _station();
     config.setDspOn(config.store.dspon, false);
     pm.on_display_player();
   }
   if (newmode == SCREENSAVER || newmode == SCREENBLANK) {
     config.isScreensaver = true;
+    config.clockOnly = false;
     _pager.setPage(pages[PG_SCREENSAVER]);
     if (newmode == SCREENBLANK) {
       _clock.moveTo(clockMove);
       config.setDspOn(true, false);
       putRequest(CLOCK, 0);
     } else { // SCREENSAVER
-      uint16_t centerY = dsp.height() / 2;
+      dsp.clearDsp();
       uint8_t _cw;
-      uint16_t timeH, dateH, weatherH, stocksH;
-      dsp.charSize(clockConf.textsize, _cw, timeH);
+      uint16_t timeH, dateH, weatherH = 0;
+      dsp.charSize(2, _cw, timeH);
       dsp.charSize(1, _cw, dateH);
+#ifndef HIDE_WEATHER
       dsp.charSize(weatherConf.widget.textsize, _cw, weatherH);
-      dsp.charSize(stocksConf.widget.textsize, _cw, stocksH);
-      uint16_t lower = 2 + dateH + 2 + (_weather ? weatherH : 0) + (_stocks ? stocksH : 0);
-      uint16_t newTop = centerY - lower / 2;
-      _clock.moveTo({ clockConf.left, (uint16_t)newTop, 0 });
-      uint16_t weatherTop = (uint16_t)(newTop + timeH + 2 + dateH + 2);
-      if (_weather) _weather->moveTo({ weatherConf.widget.left, weatherTop, (int16_t)weatherConf.width });
-      if (_stocks) _stocks->moveTo({ stocksConf.widget.left, (uint16_t)(weatherTop + (_weather ? weatherH : 0)), (int16_t)stocksConf.width });
+      const bool showWeatherLine = config.store.showweather;
+      const bool showTextLine = strlen(config.store.screensaverText) > 0;
+      if (_weather) _weather->lock(!showWeatherLine);
+      if (_sstext) {
+        _sstext->lock(!showTextLine);
+        if (showTextLine) _sstext->setText(config.store.screensaverText);
+      }
+#else
+      const bool showWeatherLine = false;
+      const bool showTextLine = false;
+#endif
+      uint16_t cal1H = 0, cal2H = 0;
+#ifdef HAS_CALENDAR_CONF
+      dsp.charSize(calendar1Conf.widget.textsize, _cw, cal1H);
+      dsp.charSize(calendar2Conf.widget.textsize, _cw, cal2H);
+#endif
+      uint16_t totalH = timeH + 2 + dateH + 2;
+#ifndef HIDE_WEATHER
+      if (showWeatherLine && _weather) totalH += weatherH + 8;
+      if (showTextLine && _sstext) totalH += weatherH + 8;
+#endif
+#ifdef HAS_CALENDAR_CONF
+      if (_cal1) totalH += cal1H + 2;
+      if (_cal2) totalH += cal2H;
+#endif
+
+      int16_t blockTop = (int16_t)((dsp.height() - totalH) / 2);
+      if (blockTop < 0) blockTop = 0;
+
+      _clock.moveTo({ clockConf.left, (uint16_t)blockTop, 0 });
+      uint16_t y = (uint16_t)blockTop + timeH + 2 + dateH + 2;
+#ifndef HIDE_WEATHER
+      if (showWeatherLine && _weather) { _weather->moveTo({ weatherConf.widget.left, y, (int16_t)weatherConf.width }); y += weatherH + 8; }
+      if (showTextLine && _sstext) {
+        uint16_t textTop = (uint16_t)(y + 3);
+        if (dsp.height() > 0 && textTop + weatherH > dsp.height()) {
+          textTop = (uint16_t)max<int16_t>(0, (int16_t)dsp.height() - (int16_t)weatherH);
+        }
+        _sstext->moveTo({ weatherConf.widget.left, textTop, (int16_t)weatherConf.width });
+        y += weatherH + 8;
+      }
+#endif
+#ifdef HAS_CALENDAR_CONF
+      if (_cal1) { _cal1->moveTo({ calendar1Conf.widget.left, y, (int16_t)calendar1Conf.width }); y += (_cal1 ? cal1H : 0) + 2; }
+      if (_cal2) { _cal2->moveTo({ calendar2Conf.widget.left, y, (int16_t)calendar2Conf.width }); }
+#endif
       putRequest(CLOCK, 0);
     }
   } else {
@@ -373,7 +522,23 @@ void Display::_swichMode(displayMode_e newmode) {
   /*-------------------------------------------------*/
   if (newmode == LOST) _showDialog(const_DlgLost);
   if (newmode == UPDATING) _showDialog(const_DlgUpdate);
-  if (newmode == SLEEPING) _showDialog("SLEEPING");
+  if (newmode == SLEEPING) {
+    dsp.clearDsp();
+    config.isScreensaver = true;
+    if (_weather) _weather->lock(true);
+#ifndef HIDE_WEATHER
+    if (_sstext) _sstext->lock(true);
+#endif
+#ifdef HAS_CALENDAR_CONF
+    if (_cal1) _cal1->lock(true);
+    if (_cal2) _cal2->lock(true);
+#endif
+    config.clockOnly = true;
+    config.clockOnlyOffsetX = -37;
+    _pager.setPage(pages[PG_SCREENSAVER]);
+    config.setDspOn(true, false);
+    putRequest(CLOCK, 1);
+  }
   if (newmode == SDCHANGE) _showDialog(const_waitForSD);
   if (newmode == INFO || newmode == SETTINGS || newmode == TIMEZONE || newmode == WIFI) _showDialog(const_DlgNextion);
   if (newmode == NUMBERS) _showDialog("");
@@ -396,6 +561,7 @@ void Display::_drawPlaylist() {
 
 void Display::_drawNextStationNum(uint16_t num) {
   _setReturnTicker(3);  //-------------------------wyjscie do ekranu glownego------------------------------------------
+  _meta.setAlign(metaConf.widget.align);
   _meta.setText(config.stationByNum(num));
   _nums.setText(num, "%d");
 }
@@ -416,27 +582,51 @@ void Display::putRequest(displayRequestType_e type, int payload) {
 }
 
 void Display::_layoutChange(bool played) {
+  if (config.getMode() == PM_BLUETOOTH && _mode == PLAYER) {
+    _meta.setTextSize(metaConf.widget.textsize);
+    _meta.setAlign(WA_CENTER);
+    _meta.setText("Bluetooth");
+    _title1.setTextSize(title1Conf.widget.textsize);
+    _title1.setAlign(WA_CENTER);
+    {
+      uint8_t _cw;
+      uint16_t metaH;
+      dsp.charSize(metaConf.widget.textsize, _cw, metaH);
+      uint16_t secondLineTop = (uint16_t)(metaConf.widget.top + metaH + 6);
+      _title1.moveTo({ 0, secondLineTop, (int16_t)dsp.width() });
+    }
+    _title1.setText("Aktywne");
+    if (_vuwidget) _vuwidget->lock(true);
+    dsp.fillRect(vuConf.left, vuConf.top, (int16_t)dsp.width(), (int16_t)(bandsConf.height * 2 + 6), config.theme.background);
+    if (_title2) _title2->setText("");
+    return;
+  }
   if (config.store.vumeter) {
+    _meta.setTextSize(metaConf.widget.textsize);
+    _title1.setTextSize(title1Conf.widget.textsize);
+    _meta.moveBack();
+    _title1.moveBack();
     if (played) {
       if (_vuwidget) _vuwidget->unlock();
       _clock.moveTo(clockMove);
       if (_weather) _weather->moveTo(weatherMoveVU);
-      if (_stocks) _stocks->moveTo(stocksMove);
     } else {
       if (_vuwidget)
         if (!_vuwidget->locked()) _vuwidget->lock();
       _clock.moveBack();
       if (_weather) _weather->moveBack();
-      if (_stocks) _stocks->moveBack();
     }
   } else {
+    _meta.setTextSize(2);
+    _title1.setTextSize(title1Conf.widget.textsize);
+    _meta.setAlign(WA_CENTER);
+    _meta.moveTo({ 0, 17, (int16_t)dsp.width() });
+    _title1.moveTo({ 0, 41, (int16_t)dsp.width() });
     if (played) {
       if (_weather) _weather->moveTo(weatherMove);
-      if (_stocks) _stocks->moveTo(stocksMove);
       _clock.moveBack();
     } else {
       if (_weather) _weather->moveBack();
-      if (_stocks) _stocks->moveBack();
       _clock.moveBack();
     }
   }
@@ -463,7 +653,7 @@ void Display::loop() {
       switch (request.type) {
         case NEWMODE: _swichMode((displayMode_e)request.payload); break;
         case CLOCK:
-          if (_mode == PLAYER || _mode == SCREENSAVER || _mode == SCREENBLANK) _time();
+          if (_mode == PLAYER || _mode == SCREENSAVER || _mode == SCREENBLANK || _mode == SLEEPING) _time(request.payload != 0);
           /*#ifdef USE_NEXTION
             if(_mode==TIMEZONE) nextion.localTime(network.timeinfo);
             if(_mode==INFO)     nextion.rssi();
@@ -476,11 +666,32 @@ void Display::loop() {
         case DRAWVOL: _volume(); break;
         case DBITRATE:
           {
+            if (config.getMode() == PM_BLUETOOTH) {
+              if (_bitrate) _bitrate->setText("");
+              if (_fullbitrate) {
+                _fullbitrate->setBitrate(0);
+                _fullbitrate->setFormat(BF_UNCNOWN);
+              }
+              break;
+            }
             static uint32_t lastBitrate = 0;
-            if (config.station.bitrate != lastBitrate) {
+            static BitrateFormat lastFormat = BF_UNCNOWN;
+            const bool bitrateChanged = (config.station.bitrate != lastBitrate);
+            const bool formatChanged = (config.configFmt != lastFormat);
+            if (bitrateChanged || formatChanged) {
               lastBitrate = config.station.bitrate;
+              lastFormat = config.configFmt;
               char buf[20];
-              snprintf(buf, 20, bitrateFmt, config.station.bitrate);
+              const char* fmt = "%dkbps";
+              switch(config.configFmt){
+                case BF_MP3:  fmt = "MP3 %dkbps"; break;
+                case BF_AAC:  fmt = "AAC %dkbps"; break;
+                case BF_FLAC: fmt = "FLC %dkbps"; break;
+                case BF_OGG:  fmt = "OGG %dkbps"; break;
+                case BF_WAV:  fmt = "WAV %dkbps"; break;
+                default:      fmt = "%dkbps";     break;
+              }
+              snprintf(buf, 20, fmt, config.station.bitrate);
               if (_bitrate) {
                 _bitrate->setText(config.station.bitrate == 0 ? "" : buf);
               }
@@ -492,6 +703,7 @@ void Display::loop() {
           }
           break;
         case AUDIOINFO:
+          if (config.getMode() == PM_BLUETOOTH) break;
           if (_heapbar) {
             _heapbar->lock(!config.store.audioinfo);
             _heapbar->setValue(player.inBufferFilled());
@@ -500,14 +712,37 @@ void Display::loop() {
         case SHOWVUMETER:
           {
             if (_vuwidget) {
-              _vuwidget->lock(!config.store.vumeter);
+              if (config.getMode() == PM_BLUETOOTH) {
+                _vuwidget->lock(true);
+              } else {
+                _vuwidget->lock(!config.store.vumeter);
+              }
               _layoutChange(player.isRunning());
+              if (_mode == PLAYER) {
+                _station();
+                _title();
+              }
             }
             break;
           }
         case SHOWWEATHER:
           {
+            if (config.getMode() == PM_BLUETOOTH) break;
+            if (_mode == SLEEPING) {
+              if (_weather) _weather->lock(true);
+#ifndef HIDE_WEATHER
+              if (_sstext) _sstext->lock(true);
+#endif
+              break;
+            }
             if (_weather) _weather->lock(!config.store.showweather);
+#ifndef HIDE_WEATHER
+            if (_sstext) {
+              const bool haveText = strlen(config.store.screensaverText) > 0;
+              _sstext->lock(!haveText);
+              if (haveText) _sstext->setText(config.store.screensaverText);
+            }
+#endif
             if (!config.store.showweather) {
 #ifndef HIDE_IP
               if (_volip) _volip->setText(WiFi.localIP().toString().c_str(), iptxtFmt);
@@ -517,22 +752,42 @@ void Display::loop() {
             }
             break;
           }
-        case SHOWSTOCKS:
-          {
-            if (_stocks) _stocks->lock(!config.store.showstocks);
-            if (config.store.showstocks) {
-              if (_stocks) _stocks->setText(const_getStocks);
-            }
-            break;
-          }
         case NEWWEATHER:
           {
-            if (_weather && network.weatherBuf) _weather->setText(network.weatherBuf);
+            if (config.getMode() == PM_BLUETOOTH) break;
+            if (_mode == SLEEPING) {
+              if (_weather) _weather->lock(true);
+#ifndef HIDE_WEATHER
+              if (_sstext) _sstext->lock(true);
+#endif
+              break;
+            }
+            if (_weather && network.weatherBuf && config.store.showweather) _weather->setText(network.weatherBuf);
+#ifndef HIDE_WEATHER
+            if (_sstext) {
+              const bool haveText = strlen(config.store.screensaverText) > 0;
+              _sstext->lock(!haveText);
+              if (haveText) _sstext->setText(config.store.screensaverText);
+            }
+#endif
             break;
           }
-        case NEWSTOCKS:
+        case SHOWCALENDAR:
           {
-            if (_stocks && network.stocksBuf) _stocks->setText(network.stocksBuf);
+            if (config.getMode() == PM_BLUETOOTH) break;
+#ifdef HAS_CALENDAR_CONF
+            if (_cal1) _cal1->lock(!config.store.showcalendar);
+            if (_cal2) _cal2->lock(!config.store.showcalendar);
+#endif
+            break;
+          }
+        case NEWCALENDAR:
+          {
+            if (config.getMode() == PM_BLUETOOTH) break;
+#ifdef HAS_CALENDAR_CONF
+            if (_cal1 && network.calendar1Buf) _cal1->setText(network.calendar1Buf);
+            if (_cal2 && network.calendar2Buf) _cal2->setText(network.calendar2Buf);
+#endif
             break;
           }
         case BOOTSTRING:
@@ -556,6 +811,7 @@ void Display::loop() {
             break;
           }
         case DSPRSSI:
+          if (config.getMode() == PM_BLUETOOTH) break;
           if (_rssi) { _setRSSI(request.payload); }
           if (_heapbar && config.store.audioinfo) _heapbar->setValue(player.isRunning() ? player.inBufferFilled() : 0);
           break;
@@ -584,29 +840,36 @@ void Display::_setRSSI(int rssi) {
   _rssi->setText(rssi, rssiFmt);
   return;
 #endif
-  char rssiG[3];
   int rssi_steps[] = { RSSI_STEPS };
-  if (rssi >= rssi_steps[0]) strlcpy(rssiG, "\004\006", 3);
-  if (rssi >= rssi_steps[1] && rssi < rssi_steps[0]) strlcpy(rssiG, "\004\005", 3);
-  if (rssi >= rssi_steps[2] && rssi < rssi_steps[1]) strlcpy(rssiG, "\004\002", 3);
-  if (rssi >= rssi_steps[3] && rssi < rssi_steps[2]) strlcpy(rssiG, "\003\002", 3);
-  if (rssi < rssi_steps[3] || rssi >= 0) strlcpy(rssiG, "\001\002", 3);
+  uint8_t level;
+  if (rssi >= rssi_steps[0]) level = 4;
+  else if (rssi >= rssi_steps[1]) level = 3;
+  else if (rssi >= rssi_steps[2]) level = 2;
+  else if (rssi >= rssi_steps[3]) level = 1;
+  else level = 0;
+  char rssiG[3] = { (char)('0' + level), ' ', 0 };
   _rssi->setText(rssiG);
 }
 
 void Display::_station() {
+  if (config.getMode() == PM_BLUETOOTH) {
+    _meta.setAlign(WA_CENTER);
+    _meta.setText("Bluetooth");
+    return;
+  }
 
   _meta.setAlign(metaConf.widget.align);
   const char* name = config.station.name;
-  char filtered[strlen(name) + 1];
-  strlcpy(filtered, name, strlen(name) + 1);
+  char filtered[BUFLEN];
+  strlcpy(filtered, name ? name : "", sizeof(filtered));
   size_t _tl = strlen(filtered);
-  char _lb[_tl + 1];
-  for (size_t i = 0; i < _tl; i++) {
+  char _lb[BUFLEN];
+  size_t max_i = (_tl < (sizeof(_lb) - 1)) ? _tl : (sizeof(_lb) - 1);
+  for (size_t i = 0; i < max_i; i++) {
     char ch = filtered[i];
-    _lb[i] = (ch >= 'A' && ch <= 'Z') ? ch + 32 : ch;
+    _lb[i] = (ch >= 'A' && ch <= 'Z') ? (char)(ch + 32) : ch;
   }
-  _lb[_tl] = 0;
+  _lb[max_i] = 0;
   if (strstr(_lb, "connect") != NULL || strstr(_lb, "conect") != NULL) filtered[0] = 0;
   _meta.setText(filtered);
 
@@ -625,28 +888,39 @@ char *split(char *str, const char *delim) {
 }
 
 void Display::_title() {
+  if (config.getMode() == PM_BLUETOOTH) {
+    _layoutChange(false);
+    if (_title2) _title2->setText("");
+    return;
+  }
+  _layoutChange(player.isRunning());
   if (strlen(config.station.title) > 0) {
-    size_t _tl = strlen(config.station.title);
-    char _lb[_tl + 1];
-    for (size_t i = 0; i < _tl; i++) {
-      char ch = config.station.title[i];
-      _lb[i] = (ch >= 'A' && ch <= 'Z') ? ch + 32 : ch;
+    char titleBuf[BUFLEN];
+    strlcpy(titleBuf, config.station.title, sizeof(titleBuf));
+    size_t _tl = strlen(titleBuf);
+    char _lb[BUFLEN];
+    size_t max_i = (_tl < (sizeof(_lb) - 1)) ? _tl : (sizeof(_lb) - 1);
+    for (size_t i = 0; i < max_i; i++) {
+      char ch = titleBuf[i];
+      _lb[i] = (ch >= 'A' && ch <= 'Z') ? (char)(ch + 32) : ch;
     }
-    _lb[_tl] = 0;
+    _lb[max_i] = 0;
     if (strcmp(config.station.title, const_PlConnect) == 0 || strstr(_lb, "connect") != NULL || strstr(_lb, "conect") != NULL) {
-      _title1.moveBack();
       _title1.setText("");
       if (_title2) _title2->setText("");
       _title1.moveTo({ title1Conf.widget.left, (uint16_t)(dsp.height() + 1), (int16_t)title1Conf.width });
       return;
     }
-    _title1.moveBack();
-    char tmpbuf[strlen(config.station.title) + 1];
-    strlcpy(tmpbuf, config.station.title, strlen(config.station.title) + 1);
-    char *stitle = split(tmpbuf, " - ");
+    char tmpbuf[BUFLEN];
+    strlcpy(tmpbuf, config.station.title, sizeof(tmpbuf));
+    char *stitle = split(tmpbuf, (const char *)" - ");
     if (stitle) {
-      _title1.setText(tmpbuf);
-      if (_title2) _title2->setText(stitle); else { /* no second title */ }
+      if (_title2) {
+        _title1.setText(tmpbuf);
+        _title2->setText(stitle);
+      } else {
+        _title1.setText(titleBuf);
+      }
     } else {
       _title1.setText(config.station.title);
       if (_title2) _title2->setText("");
@@ -664,14 +938,20 @@ void Display::_title() {
 }
 
 void Display::_time(bool redraw) {
-
 #if LIGHT_SENSOR != 255
   if (config.store.dspon) {
     config.store.brightness = AUTOBACKLIGHT(analogRead(LIGHT_SENSOR));
     config.setBrightness();
   }
 #endif
-  _clock.draw();
+  bool forceRedraw = redraw;
+  if (_mode == SLEEPING) {
+    config.clockOnly = true;
+    config.isScreensaver = true;
+    config.clockOnlyOffsetX = -37;
+    forceRedraw = true;
+  }
+  _clock.draw(forceRedraw);
   /*#ifdef USE_NEXTION
     nextion.printClock(network.timeinfo);
   #endif*/

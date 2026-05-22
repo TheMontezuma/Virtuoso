@@ -79,9 +79,19 @@ const unsigned char logo [] PROGMEM=
   DspCore::DspCore(): Jamis_SSD1322(256, 64, &SPI, TFT_DC, TFT_RST, TFT_CS, DEF_SPI_FREQ) {}
 #endif
 
-#include "tools/utf8RusGFX.h"
+#include "tools/utf8PL.h"
 
 static uint16_t _prevClockTop = 0;
+static int16_t _clockOnlyTimeY1 = 0;
+static uint16_t _clockOnlyTimeH = 0;
+static int16_t _clockOnlyColonY1 = 0;
+static uint16_t _clockOnlyColonW = 0;
+static int16_t _clockOnlyColonShiftX = 0;
+static uint8_t _clockOnlyDigitAdvance = 14;
+static uint8_t _clockOnlyScale = 2;
+static uint16_t _clockOnlyHHW = 0;
+static uint16_t _clockOnlyMMW = 0;
+static uint8_t _clockOnlyColonPad = 2;
 void DspCore::initDisplay() {
 #if !SSD1322_GRAYSCALE
   #include "tools/oledcolorfix.h"
@@ -158,7 +168,7 @@ void DspCore::printPLitem(uint8_t pos, const char* item, ScrollWidget& current){
     setTextColor(config.theme.playlist[plColor], config.theme.background);
     setCursor(TFT_FRAMEWDT, plYStart + pos * plItemHeight);
     fillRect(0, plYStart + pos * plItemHeight - 1, width(), plItemHeight - 2, config.theme.background);
-    print(utf8Rus(item, true));
+    print(utf8PL(item, true));
   }
 }
 
@@ -172,6 +182,13 @@ void DspCore::drawPlaylist(uint16_t currentItem) {
 void DspCore::clearDsp(bool black) {
   //fillScreen(TFT_BG);
   clearDisplay();
+  _oldtimeleft = 0;
+  _olddateleft = 0;
+  _oldtimewidth = 0;
+  _olddatewidth = 0;
+  _oldTimeBuf[0] = 0;
+  _oldDateBuf[0] = 0;
+  _prevClockTop = 0;
 }
 
 GFXglyph *pgm_read_glyph_ptr(const GFXfont *gfxFont, uint8_t c) {
@@ -189,6 +206,47 @@ uint16_t DspCore::textWidth(const char *txt){
 }
 
 void DspCore::_getTimeBounds() {
+  if (config.clockOnly) {
+#if CLOCKFONT_MONO
+    setFont(&DS_DIGI15pt7b);
+#else
+    setFont(&DS_DIGI15pt7b);
+#endif
+    setTextSize(_clockOnlyScale);
+    _clockOnlyDigitAdvance = pgm_read_byte(&DS_DIGI15pt7bGlyphs['0' - 0x20].xAdvance);
+    int16_t x1, y1;
+    uint16_t w, h;
+    int16_t minY = 32767;
+    int16_t maxY = -32768;
+    const char testChars[] = "0123456789:";
+    for (uint8_t i = 0; testChars[i] != 0; i++) {
+      char s[2] = { testChars[i], 0 };
+      getTextBounds(s, 0, 0, &x1, &y1, &w, &h);
+      if (y1 < minY) minY = y1;
+      int16_t y2 = (int16_t)(y1 + (int16_t)h);
+      if (y2 > maxY) maxY = y2;
+    }
+    if (minY == 32767 || maxY == -32768) {
+      minY = 0;
+      maxY = 0;
+    }
+    _clockOnlyTimeY1 = minY;
+    _clockOnlyTimeH = (uint16_t)max<int16_t>(0, maxY - minY);
+
+    getTextBounds(":", 0, 0, &x1, &y1, &w, &h);
+    _clockOnlyColonY1 = y1;
+    uint8_t colonAdvance = pgm_read_byte(&DS_DIGI15pt7bGlyphs[':' - 0x20].xAdvance);
+    _clockOnlyColonW = (uint16_t)colonAdvance * _clockOnlyScale;
+    _clockOnlyColonShiftX = 0;
+    uint16_t digitStep = (uint16_t)_clockOnlyDigitAdvance * _clockOnlyScale;
+    _clockOnlyHHW = digitStep * 2;
+    _clockOnlyMMW = digitStep * 2;
+    // visual centering of colon
+    uint16_t colonPad = (uint16_t)_clockOnlyColonPad * _clockOnlyScale;
+    _dotsLeft = _clockOnlyHHW + colonPad + _clockOnlyColonW + colonPad; 
+    _timewidth = _dotsLeft + _clockOnlyMMW;
+    return;
+  }
   uint8_t scale = config.isScreensaver ? 2 : 1;
   _timewidth = strlen(_timeBuf) * (CHARWIDTH * scale);
   char buf[4];
@@ -197,20 +255,45 @@ void DspCore::_getTimeBounds() {
 }
 
 void DspCore::_clockSeconds(){
-  setTextSize(config.isScreensaver ? 2 : 1);
-  setFont();
+  uint8_t scale = config.clockOnly ? _clockOnlyScale : (config.isScreensaver ? 2 : 1);
+  if (config.clockOnly) {
+#if CLOCKFONT_MONO
+    setFont(&DS_DIGI15pt7b);
+#else
+    setFont(&DS_DIGI15pt7b);
+#endif
+    setTextSize(_clockOnlyScale);
+  } else {
+    setTextSize(scale);
+    setFont();
+  }
   bool even = (network.timeinfo.tm_sec % 2 == 0);
-  setTextColor(even ? config.theme.clock : config.theme.clockbg, config.theme.clockbg);
-  setCursor(_timeleft + _dotsLeft - (CHARWIDTH * (config.isScreensaver ? 2 : 1)), clockTop);
+  if (config.clockOnly) {
+    setTextColor(even ? config.theme.clock : config.theme.background, config.theme.background);
+  } else {
+    setTextColor(even ? config.theme.clock : config.theme.clockbg, config.theme.clockbg);
+  }
+  if (config.clockOnly) {
+    uint16_t colonPad = (uint16_t)_clockOnlyColonPad * _clockOnlyScale;
+    setCursor(_timeleft + _clockOnlyHHW + colonPad + 1, clockTop - _clockOnlyTimeY1);
+  } else {
+    setCursor(_timeleft + _dotsLeft - (CHARWIDTH * scale), clockTop);
+  }
   print(":");
 }
 
 void DspCore::_clockDate(){
-  uint8_t scale = config.isScreensaver ? 2 : 1;
-  int16_t dateTop = clockTop + (CHARHEIGHT * scale) + 2;
-  if(_olddateleft>0) dsp.fillRect(_olddateleft,  dateTop, _olddatewidth+8, CHARHEIGHT, config.theme.background); 
+  //uint8_t scale = config.isScreensaver ? 2 : 1;
+  uint8_t scale = 1;
+  int16_t dateTop = clockTop + (CHARHEIGHT * (config.isScreensaver ? 2 : 1)) + 2;
+  if (config.isScreensaver) {
+    dsp.fillRect(0, dateTop - 1, width(), CHARHEIGHT + 2, config.theme.background);
+  } else if (_olddateleft > 0) {
+    dsp.fillRect(_olddateleft, dateTop, _olddatewidth + 8, CHARHEIGHT, config.theme.background);
+  }
   setTextColor(config.theme.clock, config.theme.background);
   setCursor(_dateleft, dateTop);
+  setTextSize(scale);
   if(config.isScreensaver) print(_dateBuf);
   strlcpy(_oldDateBuf, _dateBuf, sizeof(_dateBuf));
   _olddatewidth = _datewidth;
@@ -218,35 +301,74 @@ void DspCore::_clockDate(){
 }
 
 void DspCore::_clockTime(){
-  uint8_t scale = config.isScreensaver ? 2 : 1;
-  if(_oldtimeleft>0 && !CLOCKFONT_MONO) dsp.fillRect(_oldtimeleft,  _prevClockTop-clockTimeHeight+1, _oldtimewidth+CHARWIDTH*scale*2+2, clockTimeHeight, config.theme.background);
+  uint8_t scale = config.clockOnly ? _clockOnlyScale : (config.isScreensaver ? 2 : 1);
+  if(_oldtimeleft>0 && !CLOCKFONT_MONO){
+    uint16_t pad = config.clockOnly ? (uint16_t)_clockOnlyDigitAdvance * _clockOnlyScale : (CHARWIDTH * scale * 2 + 2);
+    dsp.fillRect(_oldtimeleft, _prevClockTop, _oldtimewidth + pad, clockTimeHeight, config.theme.background);
+  }
   if(config.isScreensaver){
+    //_timeleft = (width() - _timewidth) / 2;
+    //_timeleft = width() - _timewidth - clockRightSpace - 2;
     _timeleft = (width() - _timewidth) / 2;
   }else{
     _timeleft = width() - _timewidth - clockRightSpace - 2;
   }
-  setTextSize(scale);
+  if (config.clockOnly) {
+    _timeleft += config.clockOnlyOffsetX;
+  }
+  if (config.clockOnly) {
+#if CLOCKFONT_MONO
+    setFont(&DS_DIGI15pt7b);
+#else
+    setFont(&DS_DIGI15pt7b);
+#endif
+    setTextSize(_clockOnlyScale);
+  } else {
+    setTextSize(scale);
+  }
   
-  if(CLOCKFONT_MONO) {
-    setCursor(_timeleft, clockTop);
+  if(CLOCKFONT_MONO && config.clockOnly) {
+    setCursor(_timeleft, clockTop - _clockOnlyTimeY1);
     setTextColor(config.theme.clockbg, config.theme.background);
     print("88 88");
   }
   clearClock();
-  setFont();
-  setCursor(_timeleft, clockTop);
+  if (!config.clockOnly) setFont();
   setTextColor(config.theme.clock, config.theme.background);
-  print(_timeBuf);
+  if (config.clockOnly) {
+    char hh[3], mm[3];
+    strftime(hh, sizeof(hh), "%H", &network.timeinfo);
+    strftime(mm, sizeof(mm), "%M", &network.timeinfo);
+    uint16_t digitStep = (uint16_t)_clockOnlyDigitAdvance * _clockOnlyScale;
+    int16_t y = clockTop - _clockOnlyTimeY1;
+    int16_t minX = (int16_t)((int32_t)_timeleft + (int32_t)_dotsLeft);
+    if (minX < 0) minX = 0;
+    if ((int32_t)minX + (int32_t)digitStep * 2 > (int32_t)width()) {
+      minX = (int16_t)max<int32_t>(0, (int32_t)width() - (int32_t)digitStep * 2);
+    }
+    setCursor(_timeleft, y);
+    print(hh[0]);
+    setCursor(_timeleft + digitStep, y);
+    print(hh[1]);
+    setCursor(minX, y);
+    print(mm[0]);
+    setCursor((int16_t)(minX + (int16_t)digitStep), y);
+    print(mm[1]);
+  } else {
+    setCursor(_timeleft, clockTop);
+    print(_timeBuf);
+  }
   setFont();
 
   strlcpy(_oldTimeBuf, _timeBuf, sizeof(_timeBuf));
   _oldtimewidth = _timewidth;
   _oldtimeleft = _timeleft;
 
-  sprintf(_buffordate, "%2d %s %d", network.timeinfo.tm_mday, mnths[network.timeinfo.tm_mon], network.timeinfo.tm_year+1900);
-  strlcpy(_dateBuf, utf8Rus(_buffordate, true), sizeof(_dateBuf));
+  snprintf(_buffordate, sizeof(_buffordate), "%2d %s %d", network.timeinfo.tm_mday, mnths[network.timeinfo.tm_mon], network.timeinfo.tm_year+1900);
+  strlcpy(_dateBuf, utf8PL(_buffordate, true), sizeof(_dateBuf));
   {
-    uint8_t scale2 = config.isScreensaver ? 2 : 1;
+    //uint8_t scale2 = config.isScreensaver ? 2 : 1;
+    uint8_t scale2 = 1;
     _datewidth = strlen(_dateBuf) * CHARWIDTH * scale2;
   }
   _dateleft = config.isScreensaver ? (_timeleft + (_timewidth - _datewidth) / 2) : (width() - clockRightSpace - _datewidth);
@@ -254,23 +376,73 @@ void DspCore::_clockTime(){
 }
 
 void DspCore::printClock(uint16_t top, uint16_t rightspace, uint16_t timeheight, bool redraw){
-  _prevClockTop = clockTop;
-  clockTop = top;
+  uint16_t prevTop = clockTop;
   clockRightSpace = rightspace;
   clockTimeHeight = timeheight;
   strftime(_timeBuf, sizeof(_timeBuf), "%H:%M", &network.timeinfo);
-  if(strcmp(_oldTimeBuf, _timeBuf)!=0 || redraw){
+  bool force = redraw;
+  bool needBounds = (strcmp(_oldTimeBuf, _timeBuf) != 0) || force;
+  if (config.clockOnly && _clockOnlyTimeH == 0) needBounds = true;
+  if (needBounds) {
     _getTimeBounds();
+  }
+  uint16_t desiredTop = top;
+  if (config.clockOnly) {
+    uint16_t h = (uint16_t)_clockOnlyTimeH;
+    uint16_t bottomPad = (uint16_t)(2 * _clockOnlyScale);
+    uint16_t drawH = h + bottomPad + 2;
+    uint16_t screenH = height();
+    desiredTop = screenH > drawH ? (uint16_t)((screenH - drawH) / 2) : 0;
+    if (desiredTop + h + bottomPad > screenH) desiredTop = screenH > (uint16_t)(h + bottomPad) ? (uint16_t)(screenH - (h + bottomPad)) : 0;
+    uint16_t minH = h + bottomPad + 2;
+    if (clockTimeHeight < minH) clockTimeHeight = minH;
+  }
+  _prevClockTop = prevTop;
+  clockTop = desiredTop;
+  if (_prevClockTop != clockTop) {
+    if (config.clockOnly) {
+      clearDisplay();
+      _oldtimeleft = 0;
+      _olddateleft = 0;
+      _oldTimeBuf[0] = 0;
+      _oldDateBuf[0] = 0;
+      force = true;
+    } else {
+      force = true;
+    }
+  }
+  if(strcmp(_oldTimeBuf, _timeBuf)!=0 || force){
+    _getTimeBounds();
+    if (config.clockOnly) {
+      uint16_t bottomPad = (uint16_t)(2 * _clockOnlyScale);
+      uint16_t minH = _clockOnlyTimeH + bottomPad + 2;
+      if (clockTimeHeight < minH) clockTimeHeight = minH;
+    }
     _clockTime();
-    if(config.isScreensaver){
-      if(strcmp(_oldDateBuf, _dateBuf)!=0 || redraw) _clockDate();
+    if(config.isScreensaver && !config.clockOnly){
+      if(strcmp(_oldDateBuf, _dateBuf)!=0 || force) _clockDate();
     }
   }
   _clockSeconds();
 }
 
 void DspCore::clearClock(){
-  dsp.fillRect(_timeleft-14,  clockTop-clockTimeHeight, _timewidth+12, clockTimeHeight+1, config.theme.background);
+  uint8_t scale = config.clockOnly ? _clockOnlyScale : (config.isScreensaver ? 2 : 1);
+  uint16_t pad = config.clockOnly ? (uint16_t)_clockOnlyDigitAdvance * _clockOnlyScale : (CHARWIDTH * scale);
+  int16_t x = (int16_t)_oldtimeleft - (int16_t)pad;
+  int16_t y = (int16_t)_prevClockTop;
+  int16_t w = (int16_t)_oldtimewidth + (int16_t)pad * 2 + 2;
+  int16_t h = (int16_t)clockTimeHeight;
+  int16_t maxW = (int16_t)width();
+  int16_t maxH = (int16_t)height();
+  if (w <= 0 || h <= 0) return;
+  if (x < 0) { w += x; x = 0; }
+  if (y < 0) { h += y; y = 0; }
+  if (x >= maxW || y >= maxH) return;
+  if (x + w > maxW) w = maxW - x;
+  if (y + h > maxH) h = maxH - y;
+  if (w <= 0 || h <= 0) return;
+  dsp.fillRect(x, y, w, h, config.theme.background);
 }
 
 void DspCore::startWrite(void) {
@@ -310,14 +482,31 @@ void DspCore::wake(void) { oled_command(SSD1322_DISPLAYON); }
 
 void DspCore::writePixel(int16_t x, int16_t y, uint16_t color) {
   if(_clipping){
-    if ((x < _cliparea.left) || (x > _cliparea.left+_cliparea.width) || (y < _cliparea.top) || (y > _cliparea.top + _cliparea.height)) return;
+    if ((x < _cliparea.left) || (x >= _cliparea.left + _cliparea.width) || (y < _cliparea.top) || (y >= _cliparea.top + _cliparea.height)) return;
   }
   Jamis_SSD1322::writePixel(x, y, color);
 }
 
 void DspCore::writeFillRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t color) {
-  if(_clipping){
-    if ((x < _cliparea.left) || (x >= _cliparea.left+_cliparea.width) || (y < _cliparea.top) || (y > _cliparea.top + _cliparea.height))  return;
+  if (w <= 0 || h <= 0) return;
+  if (_clipping) {
+    int16_t cx0 = _cliparea.left;
+    int16_t cy0 = _cliparea.top;
+    int16_t cx1 = _cliparea.left + _cliparea.width;
+    int16_t cy1 = _cliparea.top + _cliparea.height;
+
+    int16_t x0 = x < cx0 ? cx0 : x;
+    int16_t y0 = y < cy0 ? cy0 : y;
+    int16_t x1 = (int16_t)(x + w);
+    int16_t y1 = (int16_t)(y + h);
+    if (x1 > cx1) x1 = cx1;
+    if (y1 > cy1) y1 = cy1;
+
+    int16_t nw = (int16_t)(x1 - x0);
+    int16_t nh = (int16_t)(y1 - y0);
+    if (nw <= 0 || nh <= 0) return;
+    Jamis_SSD1322::writeFillRect(x0, y0, nw, nh, color);
+    return;
   }
   Jamis_SSD1322::writeFillRect(x, y, w, h, color);
 }

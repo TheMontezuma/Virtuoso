@@ -54,13 +54,29 @@ void TextWidget::init(WidgetConfig wconf, uint16_t buffsize, bool uppercase, uin
 }
 
 void TextWidget::setText(const char *txt) {
-  strlcpy(_text, dsp.utf8Rus(txt, _uppercase), _buffsize);
+  char newText[_buffsize];
+  strlcpy(newText, dsp.utf8PL(txt, _uppercase), _buffsize);
+  if (strcmp(_text, newText) == 0) return;
+  strlcpy(_text, newText, _buffsize);
   _textwidth = strlen(_text) * _charWidth;
-  if (strcmp(_oldtext, _text) == 0) return;
-  if (_active) dsp.fillRect(_oldleft == 0 ? _realLeft() : min(_oldleft, _realLeft()), _config.top, max(_oldtextwidth, _textwidth), _textheight, _bgcolor);
+  if (_active && !_locked) dsp.fillRect(_oldleft == 0 ? _realLeft() : min(_oldleft, _realLeft()), _config.top, max(_oldtextwidth, _textwidth), _textheight, _bgcolor);
   _oldtextwidth = _textwidth;
   _oldleft = _realLeft();
-  if (_active) _draw();
+  if (_active && !_locked) _draw();
+}
+
+void TextWidget::setTextSize(uint16_t textsize) {
+  if (_config.textsize == textsize) return;
+  uint16_t oldH = _textheight;
+  uint16_t oldW = max(_oldtextwidth, _textwidth);
+  uint16_t oldL = _oldleft == 0 ? _realLeft() : min(_oldleft, _realLeft());
+  if (_active && !_locked) dsp.fillRect(oldL, _config.top, oldW, oldH, _bgcolor);
+  _config.textsize = textsize;
+  dsp.charSize(_config.textsize, _charWidth, _textheight);
+  _textwidth = strlen(_text) * _charWidth;
+  _oldtextwidth = _textwidth;
+  _oldleft = _realLeft();
+  if (_active && !_locked) _draw();
 }
 
 void TextWidget::setText(int val, const char *format) {
@@ -77,8 +93,20 @@ void TextWidget::setText(const char *txt, const char *format) {
 
 uint16_t TextWidget::_realLeft() {
   switch (_config.align) {
-    case WA_CENTER: return (dsp.width() - _textwidth) / 2; break;
-    case WA_RIGHT: return (dsp.width() - _textwidth - _config.left); break;
+    case WA_CENTER: {
+      int32_t regionW = (_width > 0) ? (int32_t)_width : (int32_t)dsp.width();
+      int32_t left = (int32_t)_config.left + (regionW - (int32_t)_textwidth) / 2;
+      if (left < 0) left = 0;
+      if (left > (int32_t)dsp.width()) left = (int32_t)dsp.width();
+      return (uint16_t)left;
+    } break;
+    case WA_RIGHT: {
+      int32_t regionW = (_width > 0) ? (int32_t)_width : (int32_t)dsp.width();
+      int32_t left = (int32_t)_config.left + regionW - (int32_t)_textwidth;
+      if (left < 0) left = 0;
+      if (left > (int32_t)dsp.width()) left = (int32_t)dsp.width();
+      return (uint16_t)left;
+    } break;
     default: return _config.left; break;
   }
 }
@@ -90,6 +118,37 @@ void TextWidget::_draw() {
   dsp.setFont();
   dsp.setTextSize(_config.textsize);
   dsp.print(_text);
+  strlcpy(_oldtext, _text, _buffsize);
+}
+
+void RssiWidget::_draw() {
+  if (!_active) return;
+  size_t len = strlen(_text);
+  bool isIcon = len >= 1 && _text[0] >= '0' && _text[0] <= '4' && (len == 1 || (len == 2 && _text[1] == ' '));
+  if (!isIcon) {
+    TextWidget::_draw();
+    return;
+  }
+  uint8_t level = (uint8_t)(_text[0] - '0');
+  uint16_t left = _realLeft();
+  uint16_t top = _config.top;
+  uint16_t w = _textwidth;
+  uint16_t h = _textheight;
+  if (w < 8) w = 8;
+  if (h < 6) h = 6;
+  const uint8_t bars = 4;
+  uint16_t gap = 1;
+  uint16_t barW = (uint16_t)((w - gap * (bars - 1)) / bars);
+  if (barW == 0) barW = 1;
+  uint16_t baseY = (uint16_t)(top + h - 1);
+  for (uint8_t i = 0; i < bars; i++) {
+    if (i >= level) continue;
+    uint16_t barH = (uint16_t)((h * (i + 1)) / bars);
+    if (barH == 0) barH = 1;
+    uint16_t x = (uint16_t)(left + i * (barW + gap));
+    uint16_t y = (uint16_t)(baseY - barH + 1);
+    dsp.fillRect(x, y, barW, barH, _fgcolor);
+  }
   strlcpy(_oldtext, _text, _buffsize);
 }
 
@@ -125,6 +184,29 @@ void ScrollWidget::init(const char *separator, ScrollConfig conf, uint16_t fgcol
   _doscroll = false;
 }
 
+void ScrollWidget::setTextSize(uint16_t textsize) {
+  if (_config.textsize == textsize) return;
+  uint16_t oldH = _textheight;
+  if (_active && !_locked) dsp.fillRect(_config.left, _config.top, _width, oldH, _bgcolor);
+  _config.textsize = textsize;
+  dsp.charSize(_config.textsize, _charWidth, _textheight);
+  _sepwidth = strlen(_sep) * _charWidth;
+  if (_window) {
+    free(_window);
+    _window = NULL;
+  }
+  if (_charWidth > 0) {
+    _window = (char *)malloc(sizeof(char) * (MAX_WIDTH / _charWidth + 1));
+    memset(_window, 0, (MAX_WIDTH / _charWidth + 1));
+  }
+  _textwidth = strlen(_text) * _charWidth;
+  _oldtextwidth = _textwidth;
+  _x = _config.left;
+  _doscroll = _checkIsScrollNeeded();
+  _scrolldelay = millis();
+  if (_active && !_locked) _draw();
+}
+
 void ScrollWidget::_setTextParams() {
   if (_config.textsize == 0) return;
   dsp.setFont();
@@ -133,32 +215,60 @@ void ScrollWidget::_setTextParams() {
 }
 
 bool ScrollWidget::_checkIsScrollNeeded() {
+  if (!config.store.vumeter) return false;
   return _textwidth > _width;
 }
 
 void ScrollWidget::setText(const char *txt) {
-  strlcpy(_text, dsp.utf8Rus(txt, _uppercase), _buffsize - 1);
-  if (strcmp(_oldtext, _text) == 0) return;
+  char newText[_buffsize];
+  strlcpy(newText, dsp.utf8PL(txt, _uppercase), _buffsize - 1);
+  if (strcmp(_text, newText) == 0) return;
+  strlcpy(_text, newText, _buffsize - 1);
   _textwidth = strlen(_text) * _charWidth;
   _x = _config.left;
   _doscroll = _checkIsScrollNeeded();
   if (dsp.getScrollId() == this) dsp.setScrollId(NULL);
   _scrolldelay = millis();
-  if (_active) {
+  if (_active && !_locked) {
     _setTextParams();
+    // Keep a tiny safety margin, but avoid clearing into neighboring text rows.
+    uint16_t clipH = (uint16_t)(_textheight + 2);
+    uint16_t clipLeft = _config.left;
+    uint16_t clipW = _width;
+    if (_config.align == WA_CENTER) {
+      clipLeft = 0;
+      clipW = dsp.width();
+    }
     if (_doscroll) {
-      dsp.fillRect(_config.left, _config.top, _width, _textheight, _bgcolor);
+      dsp.fillRect(clipLeft, _config.top, clipW, clipH, _bgcolor);
       dsp.setCursor(_config.left, _config.top);
       snprintf(_window, _width / _charWidth + 1, "%s", _text);  //TODO
-      dsp.setClipping({ _config.left, _config.top, _width, (uint16_t)(_textheight + 2) });
+      dsp.setClipping({ clipLeft, _config.top, clipW, clipH });
       dsp.print(_window);
       dsp.clearClipping();
     } else {
-      dsp.fillRect(_config.left, _config.top, _width, _textheight, _bgcolor);
+      dsp.fillRect(clipLeft, _config.top, clipW, clipH, _bgcolor);
       dsp.setCursor(_realLeft(), _config.top);
-      //dsp.setClipping({ _config.left, _config.top, _width, _textheight });  //???????????to przycinało  napis volume ????????????????
-      dsp.print(_text);
-      //dsp.clearClipping();  //?????????????????? to przycinało  napis volume ?????????????????????
+      // Ellipsis when VU is OFF and text is too long
+      if (_textwidth > _width && !config.store.vumeter) {
+        int maxChars = (_width / _charWidth);
+        if (maxChars >= 3) {
+          char tmp[256] = {0};
+          int cpy = maxChars - 3;
+          if (cpy > (int)_buffsize - 1) cpy = _buffsize - 1;
+          strncpy(tmp, _text, cpy);
+          strncat(tmp, "...", sizeof(tmp) - strlen(tmp) - 1);
+          uint16_t ellw = (uint16_t)(strlen(tmp) * _charWidth);
+          int16_t ellLeft = _config.left + (int16_t)((_width - ellw) / 2);
+          if (ellLeft < _config.left) ellLeft = _config.left;
+          dsp.setCursor(ellLeft, _config.top);
+          dsp.print(tmp);
+        } else {
+          dsp.print("");
+        }
+      } else {
+        dsp.print(_text);
+      }
     }
     strlcpy(_oldtext, _text, _buffsize);
   }
@@ -180,14 +290,28 @@ void ScrollWidget::loop() {
 }
 
 void ScrollWidget::_clear() {
-  dsp.fillRect(_config.left, _config.top, _width, _textheight, _bgcolor);
+  uint16_t clipH = (uint16_t)(_textheight + 2);
+  uint16_t clearLeft = _config.left;
+  uint16_t clearW = _width;
+  if (_config.align == WA_CENTER) {
+    clearLeft = 0;
+    clearW = dsp.width();
+  }
+  dsp.fillRect(clearLeft, _config.top, clearW, clipH, _bgcolor);
 }
 
 void ScrollWidget::_draw() {
   if (!_active || _locked) return;
   _setTextParams();
+  uint16_t clipH = (uint16_t)(_textheight + 2);
+  uint16_t clipLeft = _config.left;
+  uint16_t clipW = _width;
+  if (_config.align == WA_CENTER) {
+    clipLeft = 0;
+    clipW = dsp.width();
+  }
   if (_doscroll) {
-    dsp.fillRect(_config.left, _config.top, _width, _textheight, _bgcolor);
+    dsp.fillRect(clipLeft, _config.top, clipW, clipH, _bgcolor);
     uint16_t _newx = _config.left - _x;
     const char *_cursor = _text + _newx / _charWidth;
     uint16_t hiddenChars = _cursor - _text;
@@ -198,14 +322,32 @@ void ScrollWidget::_draw() {
       snprintf(_window, _width / _charWidth + 1, "%s%s", _scursor, _text);
     }
     dsp.setCursor(_x + hiddenChars * _charWidth, _config.top);
-    dsp.setClipping({ _config.left, _config.top, _width, (uint16_t)(_textheight + 2) });
+    dsp.setClipping({ clipLeft, _config.top, clipW, clipH });
     dsp.print(_window);
     dsp.clearClipping();
   } else {
-    dsp.fillRect(_config.left, _config.top, _width, _textheight, _bgcolor);
+    dsp.fillRect(clipLeft, _config.top, clipW, clipH, _bgcolor);
     dsp.setCursor(_realLeft(), _config.top);
-    dsp.setClipping({ _realLeft(), _config.top, _width, (uint16_t)(_textheight + 2) });
-    dsp.print(_text);
+    dsp.setClipping({ clipLeft, _config.top, clipW, clipH });
+    if (_textwidth > _width && !config.store.vumeter) {
+      int maxChars = (_width / _charWidth);
+      if (maxChars >= 3) {
+        char tmp[256] = {0};
+        int cpy = maxChars - 3;
+        if (cpy > (int)_buffsize - 1) cpy = _buffsize - 1;
+        strncpy(tmp, _text, cpy);
+        strncat(tmp, "...", sizeof(tmp) - strlen(tmp) - 1);
+        uint16_t ellw = (uint16_t)(strlen(tmp) * _charWidth);
+        int16_t ellLeft = _config.left + (int16_t)((_width - ellw) / 2);
+        if (ellLeft < _config.left) ellLeft = _config.left;
+        dsp.setCursor(ellLeft, _config.top);
+        dsp.print(tmp);
+      } else {
+        dsp.print("");
+      }
+    } else {
+      dsp.print(_text);
+    }
     dsp.clearClipping();
   }
 }
@@ -294,8 +436,8 @@ void VuWidget::init(WidgetConfig wconf, VUBandsConfig bands, uint16_t vumaxcolor
 }
 
 void VuWidget::_draw() {
-  _clear();
   if (!_active || _locked) return;
+  _clear();
 #if !defined(USE_NEXTION) && I2S_DOUT == 255
 /*  static uint8_t cc = 0;
   cc++;
@@ -361,7 +503,15 @@ void VuWidget::_draw() {
   }
 }
 void VuWidget::loop() {
-  if (_active || !_locked) _draw();
+  if (!_active || _locked) return;
+#ifndef VU_UPDATE_INTERVAL_MS
+#define VU_UPDATE_INTERVAL_MS 20
+#endif
+  static uint32_t lastVuMs = 0;
+  uint32_t now = millis();
+  if ((int32_t)(now - lastVuMs) < VU_UPDATE_INTERVAL_MS) return;
+  lastVuMs = now;
+  _draw();
 }
 void VuWidget::_clear() {
   dsp.fillRect(_config.left, _config.top, _bands.width * 2 + _bands.space, _bands.height, _bgcolor);
@@ -380,8 +530,8 @@ void VuWidget::init(WidgetConfig wconf, VUBandsConfig bands, uint16_t vumaxcolor
   _bands = bands;
 }
 void VuWidget::_draw() {
-  _clear();
   if (!_active || _locked) return;
+  _clear();
   static uint16_t measL, measR;
   uint16_t bandColor;
   uint16_t dimension = _config.align ? _bands.width : _bands.height;
@@ -402,76 +552,189 @@ void VuWidget::_draw() {
   if (measR > dimension) measR = dimension;
   uint8_t h = (dimension / _bands.perheight) - _bands.vspace;
 
-  int totalWidth = dsp.width() - _config.left;
-  int leftEdge = _config.left;
-  int rightEdge = leftEdge + totalWidth;
-  int screenCenterX = leftEdge + totalWidth / 2;
-  int vuTop = _config.top;
-  
-  // Grubsza pionowa kreska w środku (separator kanałów) - BIAŁA, wysoka kreska
-  int centerBarWidth = 2;
-  int centerBarHeight = _bands.height;
-  dsp.fillRect(screenCenterX - centerBarWidth/2, vuTop, centerBarWidth, centerBarHeight, WHITE);
-  
-  // Rysowanie oznaczeń L P POD paskami (bez kreski między nimi)
-  dsp.setTextSize(1);
-  dsp.setTextColor(WHITE, _bgcolor);
-  int labelY = vuTop + _bands.height + 2;
-  int leftSepX = screenCenterX - centerBarWidth/2;
-  int rightSepX = leftSepX + centerBarWidth;
-  int glyphGap = 7;
-  dsp.setCursor(leftSepX - glyphGap - CHARWIDTH + 3, labelY);
-  dsp.print("L");
-  dsp.setCursor(rightSepX + glyphGap, labelY);
-  dsp.print("P");
+  if (config.store.vumeter_parallel) {
+    // =================================================================================
+    // ======================  PARALLEL STYLE (FROM LEFT)  =============================
+    // =================================================================================
+    // Skracamy szerokość, aby nie najechać na Bitrate Widget
+    // Bitrate widget zazwyczaj jest po prawej stronie, szerokość ~40-60px
+    // Musimy być pewni, że nie czyścimy go.
+    int totalWidth = (int)dsp.width() - (int)_config.left - 70;
+    if (totalWidth < 0) totalWidth = 0;
+    int vuTop = _config.top;
+    int halfHeight = _bands.height; // Użyj pełnej wysokości dla każdego paska (jak w symetrycznym)
+    
+    // Parametry segmentów - takie same jak w symetrycznym
+    int segmentGap = 2;
+    int segmentWidth = h; // h jest obliczane wcześniej jako (dimension / perheight) - vspace
+    
+    const int labelW = 10;
+    int barStartX = _config.left + labelW;
+    int maxBarWidth = totalWidth - labelW;
+    int numSegments = maxBarWidth / (segmentWidth + segmentGap);
 
-  // Parametry segmentów
-  int segmentGap = 2;
-  int segmentWidth = h;
-  int gapFromCenter = 2;
-  
-  // Obliczenie liczby segmentów dla każdej strony
-  int leftBarWidth = screenCenterX - leftEdge - centerBarWidth/2 - gapFromCenter;
-  int rightBarWidth = rightEdge - screenCenterX - centerBarWidth/2 - gapFromCenter;
-  int numSegments = leftBarWidth / (segmentWidth + segmentGap);
-  
-  // Rysowanie tylko aktywnych segmentów (po wcześniejszym wyczyszczeniu pola)
-#ifndef BOOMBOX_STYLE
-  int activeLSegments = (measL * numSegments) / dimension;
-  int activeRSegments = (measR * numSegments) / dimension;
-  int segmentHeight = _bands.height;
-  int segmentTopOffset = (_bands.height - segmentHeight);
-  for (int seg = 0; seg < activeLSegments; seg++) {
-    int leftSegX = screenCenterX - centerBarWidth/2 - gapFromCenter - segmentWidth - seg * (segmentWidth + segmentGap);
-    if (leftSegX >= leftEdge) {
-      uint16_t segColor = (seg >= numSegments - 7) ? WHITE : GRAY_3;
-      int drawHeight = segmentHeight - 2;               // -1 px z góry i -1 px z dołu
-      if (drawHeight < 0) drawHeight = 0;
-      int drawTop = vuTop + segmentTopOffset + 1;       // +1 px w dół (góra)
-      dsp.fillRect(leftSegX, drawTop, segmentWidth, drawHeight, segColor);
+    // Rysowanie Kanał L (Góra)
+    int activeLSegments = (measL * numSegments) / dimension;
+    int segmentHeight = halfHeight - 2; 
+    
+    for (int seg = 0; seg < numSegments; seg++) {
+        int segX = barStartX + seg * (segmentWidth + segmentGap);
+        if (segX + segmentWidth <= _config.left + totalWidth) {
+            uint16_t segColor;
+            if (seg < activeLSegments) {
+                 segColor = (seg >= numSegments - 7) ? WHITE : GRAY_3; 
+            } else {
+                 segColor = _bgcolor; 
+                 continue; 
+            }
+            dsp.fillRect(segX, vuTop + 1, segmentWidth, segmentHeight, segColor);
+        }
     }
-  }
-  for (int seg = 0; seg < activeRSegments; seg++) {
-    int rightSegX = screenCenterX + centerBarWidth/2 + gapFromCenter + seg * (segmentWidth + segmentGap);
-    if (rightSegX + segmentWidth <= rightEdge) {
-      uint16_t segColor = (seg >= numSegments - 7) ? WHITE : GRAY_3;
-      int drawHeight = segmentHeight - 2;               // -1 px z góry i -1 px z dołu
-      if (drawHeight < 0) drawHeight = 0;
-      int drawTop = vuTop + segmentTopOffset + 1;       // +1 px w dół (góra)
-      dsp.fillRect(rightSegX, drawTop, segmentWidth, drawHeight, segColor);
+
+    // Rysowanie Kanał P (Dół)
+    int activeRSegments = (measR * numSegments) / dimension;
+    int bottomBarTop = vuTop + halfHeight + 2; // Przesunięcie drugiego paska w dół
+
+    for (int seg = 0; seg < numSegments; seg++) {
+        int segX = barStartX + seg * (segmentWidth + segmentGap);
+        if (segX + segmentWidth <= _config.left + totalWidth) {
+             uint16_t segColor;
+             if (seg < activeRSegments) {
+                  segColor = (seg >= numSegments - 7) ? WHITE : GRAY_3; 
+             } else {
+                  segColor = _bgcolor;
+                  continue;
+             }
+             dsp.fillRect(segX, bottomBarTop + 1, segmentWidth, segmentHeight, segColor);
+        }
     }
+
+    dsp.setFont(&TinyFont5);
+    dsp.setTextSize(1);
+    dsp.setTextColor(WHITE, _bgcolor);
+    clipArea caPar;
+    caPar.left = (uint16_t)_config.left;
+    caPar.top = (uint16_t)_config.top;
+    caPar.width = (uint16_t)totalWidth;
+    caPar.height = (uint16_t)(_bands.height * 2 + 2);
+    dsp.setClipping(caPar);
+    dsp.setCursor(_config.left, (int16_t)(vuTop + 5));
+    dsp.print("L");
+    dsp.setCursor(_config.left, (int16_t)(bottomBarTop + 5));
+    dsp.print("P");
+    dsp.clearClipping();
+    dsp.setFont();
+
+  } else {
+    // =================================================================================
+    // ======================  SYMMETRIC STYLE (FROM CENTER)  ==========================
+    // =================================================================================
+    int totalWidth = (int)dsp.width() - (int)_config.left;
+    if (totalWidth < 0) totalWidth = 0;
+    int leftEdge = _config.left;
+    int rightEdge = leftEdge + totalWidth;
+    int screenCenterX = leftEdge + totalWidth / 2;
+    int vuTop = _config.top;
+    
+    // Grubsza pionowa kreska w środku (separator kanałów) - BIAŁA, wysoka kreska
+    int centerBarWidth = 2;
+    int centerBarHeight = _bands.height;
+    dsp.fillRect(screenCenterX - centerBarWidth/2, vuTop, centerBarWidth, centerBarHeight, WHITE);
+    
+    // Parametry segmentów
+    int segmentGap = 2;
+    int segmentWidth = h;
+    int gapFromCenter = 2;
+    
+    // Obliczenie liczby segmentów dla każdej strony
+    int leftBarWidth = screenCenterX - leftEdge - centerBarWidth/2 - gapFromCenter;
+    int rightBarWidth = rightEdge - screenCenterX - centerBarWidth/2 - gapFromCenter;
+    int numSegments = leftBarWidth / (segmentWidth + segmentGap);
+    
+    // Rysowanie tylko aktywnych segmentów (po wcześniejszym wyczyszczeniu pola)
+  #ifndef BOOMBOX_STYLE
+    int activeLSegments = (measL * numSegments) / dimension;
+    int activeRSegments = (measR * numSegments) / dimension;
+    int segmentHeight = _bands.height;
+    int segmentTopOffset = (_bands.height - segmentHeight);
+    for (int seg = 0; seg < activeLSegments; seg++) {
+      int leftSegX = screenCenterX - centerBarWidth/2 - gapFromCenter - segmentWidth - seg * (segmentWidth + segmentGap);
+      if (leftSegX >= leftEdge) {
+        uint16_t segColor = (seg >= numSegments - 7) ? WHITE : GRAY_3;
+        int drawHeight = segmentHeight - 2;               // -1 px z góry i -1 px z dołu
+        if (drawHeight < 0) drawHeight = 0;
+        int drawTop = vuTop + segmentTopOffset + 1;       // +1 px w dół (góra)
+        dsp.fillRect(leftSegX, drawTop, segmentWidth, drawHeight, segColor);
+      }
+    }
+    for (int seg = 0; seg < activeRSegments; seg++) {
+      int rightSegX = screenCenterX + centerBarWidth/2 + gapFromCenter + seg * (segmentWidth + segmentGap);
+      if (rightSegX + segmentWidth <= rightEdge) {
+        uint16_t segColor = (seg >= numSegments - 7) ? WHITE : GRAY_3;
+        int drawHeight = segmentHeight - 2;               // -1 px z góry i -1 px z dołu
+        if (drawHeight < 0) drawHeight = 0;
+        int drawTop = vuTop + segmentTopOffset + 1;       // +1 px w dół (góra)
+        dsp.fillRect(rightSegX, drawTop, segmentWidth, drawHeight, segColor);
+      }
+    }
+  #endif
+    dsp.setFont(&TinyFont5);
+    dsp.setTextSize(1);
+    dsp.setTextColor(WHITE, _bgcolor);
+    clipArea caSym;
+    caSym.left = (uint16_t)_config.left;
+    caSym.top = (uint16_t)_config.top;
+    caSym.width = (uint16_t)totalWidth;
+    caSym.height = (uint16_t)(_bands.height * 2 + 2);
+    dsp.setClipping(caSym);
+    int16_t labelY = (int16_t)(vuTop + _bands.height + 2 + 5);
+    dsp.setCursor((int16_t)(screenCenterX - 14), labelY);
+    dsp.print("L");
+    dsp.setCursor((int16_t)(screenCenterX + 10), labelY);
+    dsp.print("P");
+    dsp.clearClipping();
+    dsp.setFont();
   }
-#endif
   
   // Brak czyszczenia – całe pole czyścimy na starcie w _clear()
 }
 void VuWidget::loop() {
-  if (_active || !_locked) _draw();
+  if (!_active || _locked) return;
+#ifndef VU_UPDATE_INTERVAL_MS
+#define VU_UPDATE_INTERVAL_MS 20
+#endif
+  static uint32_t lastVuMs = 0;
+  uint32_t now = millis();
+  if ((int32_t)(now - lastVuMs) < VU_UPDATE_INTERVAL_MS) return;
+  lastVuMs = now;
+  _draw();
 }
 
 void VuWidget::_clear() {
-  uint16_t w = dsp.width() - _config.left;
-  dsp.fillRect(_config.left, _config.top, w, _bands.height, _bgcolor);
+  int w = (int)dsp.width() - (int)_config.left;
+  if (w <= 0) return;
+  if (config.store.vumeter_parallel) {
+    w -= 70;
+    if (w < 0) w = 0;
+  }
+
+  // Czyść większy obszar w pionie, aby usunąć śmieci po trybie równoległym
+  // oraz objąć napisy w trybie symetrycznym.
+  // _bands.height = 6. 
+  // Tryb symetryczny: height 6 + napis pod spodem.
+  // Tryb równoległy: height 6 + gap 2 + height 6 = 14px.
+  // Bitrate zaczyna się na 56. VU top = 42.
+  // 42 + 14 = 56. Jesteśmy na styk.
+  // Jeśli czyścimy 3x height (18px), to 42 + 18 = 60. Zamazujemy bitrate.
+  // Ograniczamy do 14px (2.5x height lub po prostu policzone).
+  
+  int h = (int)_bands.height * 2 + 2;
+  int maxH = (int)dsp.height() - (int)_config.top;
+  if (h > maxH) h = maxH;
+  if (h <= 0) return;
+  
+  // Jeśli _config.left jest 0, to czyścimy od lewej krawędzi.
+  dsp.fillRect(_config.left, _config.top, (int16_t)w, (int16_t)h, _bgcolor);
 }
 /******************************************************************/
 /*********************** END VU WIDGET ****************************/
@@ -520,7 +783,7 @@ void NumWidget::_getBounds() {
 void NumWidget::_draw() {
   if (!_active) return;
   dsp.setNumFont();  // --------SetBigFont
-  //dsp.setTextSize(1);
+  // dsp.setTextSize(1);
   dsp.setTextColor(_fgcolor, _bgcolor);
   dsp.setCursor(_realLeft(), _config.top);
   dsp.print(_text);
@@ -555,11 +818,11 @@ void ProgressWidget::loop() {
 }
 
 /**************************
-      CLOCK WIDGET
+     CLOCK WIDGET
  **************************/
-void ClockWidget::draw() {
+void ClockWidget::draw(bool redraw) {
   if (!_active) return;
-  dsp.printClock(_config.top, _config.left, _config.textsize, false);
+  dsp.printClock(_config.top, _config.left, _config.textsize, redraw);
 }
 
 void ClockWidget::_draw() {

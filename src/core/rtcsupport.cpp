@@ -9,6 +9,7 @@ RTC rtc;
 
 bool RTC::init(){
 	RTCWire.begin(RTC_SDA, RTC_SCL);
+	RTCWire.setClock(I2C_FREQ_HZ);
 	return begin(&RTCWire);
 }
 

@@ -11,6 +11,40 @@ AsyncMqttClient mqttClient;
 TimerHandle_t mqttReconnectTimer;
 char topic[140], status[BUFLEN*3], vol[5], buf[20];
 
+static size_t jsonEscapeTo(char* dst, size_t dstSize, const char* src) {
+  if (!dst || dstSize == 0) return 0;
+  size_t o = 0;
+  if (!src) { dst[0] = 0; return 0; }
+  for (size_t i = 0; src[i] && o + 1 < dstSize; i++) {
+    const unsigned char c = static_cast<unsigned char>(src[i]);
+    const char* esc = nullptr;
+    switch (c) {
+      case '\"': esc = "\\\""; break;
+      case '\\': esc = "\\\\"; break;
+      case '\b': esc = "\\b"; break;
+      case '\f': esc = "\\f"; break;
+      case '\n': esc = "\\n"; break;
+      case '\r': esc = "\\r"; break;
+      case '\t': esc = "\\t"; break;
+      default: esc = nullptr; break;
+    }
+    if (esc) {
+      for (size_t k = 0; esc[k] && o + 1 < dstSize; k++) dst[o++] = esc[k];
+      continue;
+    }
+    if (c < 0x20) {
+      if (o + 6 >= dstSize) break;
+      const int wrote = snprintf(dst + o, dstSize - o, "\\u%04x", static_cast<unsigned int>(c));
+      if (wrote != 6) break;
+      o += 6;
+      continue;
+    }
+    dst[o++] = static_cast<char>(c);
+  }
+  dst[o] = 0;
+  return o;
+}
+
 void connectToMqtt() {
   mqttClient.connect();
 }
@@ -27,7 +61,7 @@ void mqttInit() {
 
 void onMqttConnect(bool sessionPresent) {
   memset(topic, 0, 140);
-  sprintf(topic, "%s%s", MQTT_ROOT_TOPIC, "command");
+  snprintf(topic, sizeof(topic), "%s%s", MQTT_ROOT_TOPIC, "command");
   mqttClient.subscribe(topic, 2);
   mqttPublishStatus();
   mqttPublishVolume();
@@ -38,8 +72,13 @@ void mqttPublishStatus() {
   if(mqttClient.connected()){
     memset(topic, 0, 140);
     memset(status, 0, BUFLEN*3);
-    sprintf(topic, "%s%s", MQTT_ROOT_TOPIC, "status");
-    sprintf(status, "{\"status\": %d, \"station\": %d, \"name\": \"%s\", \"title\": \"%s\", \"on\": %d}", player.status()==PLAYING?1:0, config.lastStation(), config.station.name, config.station.title, config.store.dspon);
+    snprintf(topic, sizeof(topic), "%s%s", MQTT_ROOT_TOPIC, "status");
+    char nameEsc[BUFLEN] = {0};
+    char titleEsc[BUFLEN * 2] = {0};
+    jsonEscapeTo(nameEsc, sizeof(nameEsc), config.station.name);
+    jsonEscapeTo(titleEsc, sizeof(titleEsc), config.station.title);
+    snprintf(status, sizeof(status), "{\"status\": %d, \"station\": %d, \"name\": \"%s\", \"title\": \"%s\", \"on\": %d}",
+             player.status()==PLAYING?1:0, config.lastStation(), nameEsc, titleEsc, config.store.dspon);
     mqttClient.publish(topic, 0, true, status);
   }
 }
@@ -48,8 +87,8 @@ void mqttPublishPlaylist() {
   if(mqttClient.connected()){
     memset(topic, 0, 140);
     memset(status, 0, BUFLEN*3);
-    sprintf(topic, "%s%s", MQTT_ROOT_TOPIC, "playlist");
-    sprintf(status, "http://%s%s", WiFi.localIP().toString().c_str(), PLAYLIST_PATH);
+    snprintf(topic, sizeof(topic), "%s%s", MQTT_ROOT_TOPIC, "playlist");
+    snprintf(status, sizeof(status), "http://%s%s", WiFi.localIP().toString().c_str(), PLAYLIST_PATH);
     mqttClient.publish(topic, 0, true, status);
   }
 }
@@ -58,8 +97,8 @@ void mqttPublishVolume(){
   if(mqttClient.connected()){
     memset(topic, 0, 140);
     memset(vol, 0, 5);
-    sprintf(topic, "%s%s", MQTT_ROOT_TOPIC, "volume");
-    sprintf(vol, "%d", config.store.volume);
+    snprintf(topic, sizeof(topic), "%s%s", MQTT_ROOT_TOPIC, "volume");
+    snprintf(vol, sizeof(vol), "%d", config.store.volume);
     mqttClient.publish(topic, 0, true, vol);
   }
 }
@@ -72,8 +111,12 @@ void onMqttDisconnect(AsyncMqttClientDisconnectReason reason) {
 
 void onMqttMessage(char* topic, char* payload, AsyncMqttClientMessageProperties properties, size_t len, size_t index, size_t total) {
   if (len == 0) return;
+  if (index != 0) return;
+  if (index + len != total) return;
   memset(buf, 0, 20);
-  strlcpy(buf, payload, len+1);
+  const size_t copyLen = (len < sizeof(buf) - 1) ? len : (sizeof(buf) - 1);
+  memcpy(buf, payload, copyLen);
+  buf[copyLen] = 0;
   if (strcmp(buf, "prev") == 0) {
     player.prev();
     return;
@@ -136,8 +179,9 @@ void onMqttMessage(char* topic, char* payload, AsyncMqttClientMessageProperties 
     return;
   }
   if (strstr(buf, "http")==buf){
-    if(len+1>sizeof(player.burl)) return;
-    strlcpy(player.burl, payload, len+1);
+    const size_t burlCopyLen = (len < sizeof(player.burl) - 1) ? len : (sizeof(player.burl) - 1);
+    memcpy(player.burl, payload, burlCopyLen);
+    player.burl[burlCopyLen] = 0;
     return;
   }
 }

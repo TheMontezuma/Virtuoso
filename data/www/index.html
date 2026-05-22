@@ -6,102 +6,760 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <link rel="apple-touch-icon" type="image/png" href="elogo.png">
   <link rel="icon" type="image/png" href="elogo.png">
-  <link rel="stylesheet" title="base" href="style.css?%VERSION%" type="text/css">
-  <title>ёRadio - Odtwarzacz</title>
+  <link rel="stylesheet" title="base" href="style.css?%VERSION%&ui=20260317" type="text/css">
+  <title>Virtuoso – Panel</title>
   <style> </style>
   </head>
-<body class="modeweb">
-  <div class="content">
-    <div class="logo"></div>
-    <div id="navbar">
-      <div class="playerbytton navbutton" id="playlistbutton" data-name="playlist"></div>
-      <div class="playerbytton navbutton" id="sdbutton" data-name="sdcard"></div>
-      <div class="playerbytton navbutton" id="settingsbutton" data-name="settings"></div>
-    </div>
-    <div class="playerwrap">
-      <div class="player">
-        <div id="nameset">&nbsp;</div>
-        <div id="meta">&nbsp;</div>
-        <div class="playerbyttonwrap">
-          <div class="playerbytton" id="prevbutton" data-name="prev"></div>
-          <div class="playerbytton stopped" id="playbutton" data-name="play"></div>
-          <div class="playerbytton" id="nextbutton" data-name="next"></div>
-          <div class="playerbytton" id="volmbutton" data-name="volm"></div>
-          <div class="playerbytton" id="volpbutton" data-name="volp"></div>
-          <div class="playerbytton" id="eqalbutton" data-name="equalizer"></div>
+<body class="modeweb v-ui sd-disabled">
+  <div class="v-shell">
+    <aside class="v-sidebar">
+      <div class="v-brand font-mono" title="Virtuoso">V</div>
+      <div class="v-nav">
+        <a class="v-navitem" id="dashbutton" href="/" title="Panel" aria-label="Panel">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect>
+          </svg>
+        </a>
+        <div class="v-navitem playerbytton" id="playlistbutton" data-name="playlist" role="button" tabindex="0" title="Playlisty" aria-label="Playlisty">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line>
+          </svg>
         </div>
-        <div id="equalizerwrap">
-		      <div id="equalizerbg" class="hidden">
-				    <ul id="equalizer">
-						  <li>
-						  <li>
-								balans<span class="eqinfo" id="eqbalinfo">0</span>
-								<input type="range" id="eqbal" class="slider" data-slaveid="eqbalinfo" name="balance" min="-16" max="16" value="0">
-							</li>
-						  <li>
-						  <li>
-								wysokie<span class="eqinfo" id="eqtrebleinfo">0</span>
-								<input type="range" id="eqtreble" class="slider" data-slaveid="eqtrebleinfo" name="treble" min="-16" max="16" value="0">
-							</li>
-						  <li>
-								średnie<span class="eqinfo" id="eqmiddleinfo">0</span>
-								<input type="range" id="eqmiddle" class="slider" data-slaveid="eqmiddleinfo" name="middle" min="-16" max="16" value="0">
-						  </li>
-						  <li>
-								niskie<span class="eqinfo" id="eqbassinfo">0</span>
-								<input type="range" id="eqbass" class="slider" data-slaveid="eqbassinfo" name="bass" min="-16" max="16" value="0">
-						  </li>
-						  <li class="formbuttons">
-						  	<div class="button" id="accept_button" data-name="equalizer">Zastosuj</div>
-						  </li>
-				    </ul>
-		      </div>
-		      <div id="volnav">
-		        <div id="modeline"><span id="modeweb" class="modeitem" data-name="web">WWW</span><span id="modesd" data-name="sd" class="modeitem">SD</span></div>
-		        <input type="range" id="volrange" class="slider" name="volume" data-slaveid="volinfo" min="0" max="254" value="0">
-		      </div>
-		      <div id="sdnav" class="hidden">
-		        <div id="sdposvals">
-		          <div id="sdposvalscurrent">0:00</div>
-	            <div id="snuffle" class="playerbytton active" data-name="snuffle"><span></span></div>
-		          <div id="sdposvalsend">0:00</div>
-		        </div>
-		        <input type="range" id="sdpos" class="slider" name="sdpos" min="0" max="100" value="0">
-		      </div>
-		      <div class="infowrap">
-		        <div class="infoitem">głośność: <span id="volinfo">0</span></div>
-		        <div class="infoitem" id="bitinfo">bitrate: 0kBit</div>
-		        <div class="infoitem" id="rsiinfo">RSSI: 0dBm</div>
-		      </div>
-		      <ul id="playlist">
-		      </ul>
-        </div><!--equalizerwrap-->
-      </div><!--player-->
-      <div id="pleditorwrap" class="hidden">
-        <div id="pleditor">
-          <h2>Edytor playlisty<span onclick="showEditor()"></span></h2>
-          <div id="pleheader"><span class="space"><input type="checkbox" onclick="selectAll(this)" /></span><span class="plename">Nazwa</span><span class="pleurl">URL</span><span class="pleovol">Poziom</span></div>
-          <ol id="pleditorcontent">
-            <li class="pleitem">
-              <span>1.</span>
-              <input class="pleinput plename" type="text" value="" maxlength="140" />
-              <input class="pleinput pleurl" type="text" value="" maxlength="140" />
-              <input class="pleinput pleovol" type="number" min="-30" max="30" step="1" value="0" />
-            </li>
-          </ol><!--pleditorcontent-->
-          <div class="formbuttons">
-            <label for="file-upload" class="button" data-name="plimport">Importuj</label><input id="file-upload" type="file" accept=".txt, .csv" onchange="doPlUpload(this)" hidden/>
-            <div class="button" data-name="plexport">Eksportuj</div>
-            <div class="button" data-name="pladd">Dodaj</div>
-            <div class="button" data-name="pldel">Usuń</div>
-            <div class="button" data-name="plsubmit">Zapisz</div>
+        <div class="v-navitem playerbytton hidden" id="sdbutton" data-name="sdcard" role="button" tabindex="0" title="Karta SD" aria-label="Karta SD">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M7 2h8l4 4v16a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z"></path><line x1="9" y1="9" x2="15" y2="9"></line><line x1="9" y1="13" x2="15" y2="13"></line>
+          </svg>
+        </div>
+        <div class="v-navitem playerbytton" id="settingsbutton" data-name="settings" role="button" tabindex="0" title="Sprzęt / Ustawienia" aria-label="Sprzęt / Ustawienia">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M12 15.5A3.5 3.5 0 1 0 12 8.5a3.5 3.5 0 0 0 0 7z"></path><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 8a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 8 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 8c.28.5.43 1.07.43 1.66 0 .59-.15 1.16-.43 1.66a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+          </svg>
+        </div>
+        <a class="v-navitem" href="https://github.com/olo2000pm/Virtuoso-ESP32-YoRadio" target="_blank" rel="noreferrer" title="Dokumentacja" aria-label="Dokumentacja">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path>
+          </svg>
+        </a>
+      </div>
+    </aside>
+    <main class="v-main">
+      <header class="v-topbar">
+        <div class="v-title">
+          <h1>Virtuoso</h1>
+          <p>Zintegrowany panel sterowania</p>
+        </div>
+        <div class="v-statusline">
+          <span class="v-statusdot"></span>
+          <span class="v-statuslabel">POŁĄCZONO</span>
+          <span class="v-statussub">Podgląd na żywo</span>
+          <span class="v-statusdot animate-pulse" style="width:8px;height:8px;"></span>
+        </div>
+      </header>
+
+      <section class="v-card v-hero">
+        <div>
+          <div class="v-herohead">
+            <div>
+              <div class="font-mono" style="letter-spacing:.16em;text-transform:uppercase;color:rgba(0,229,255,.9);font-size:12px;">Virtuoso</div>
+              <div style="margin-top:6px;color:rgba(230,230,230,.9);font-size:14px;">Mistrzowska precyzja w każdym bicie.</div>
+            </div>
+            <div class="v-sysstate">
+              <div class="v-online"><span class="v-led"></span> POŁĄCZONO</div>
+              <div class="v-live"><span class="v-led animate-pulse"></span> Podgląd na żywo</div>
+            </div>
           </div>
-        </div><!--pleditor-->
-      </div><!--pleditorwrap-->
-    </div><!--playerwrap-->
-    <div id="copy">powered by <a target="_blank" href="https://github.com/e2002/yoradio/">ёRadio</a> | v%VERSION%</div>
+
+          <div class="v-now">
+            <div class="v-nowlabel">Teraz odtwarzane</div>
+            <div id="nameset" class="font-mono">&nbsp;</div>
+            <div id="meta">&nbsp;</div>
+          </div>
+
+          <div class="v-controls playerbyttonwrap">
+            <div class="playerbytton" id="prevbutton" data-name="prev" title="Poprzednia" aria-label="Poprzednia">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <polygon points="19 20 9 12 19 4 19 20"></polygon><line x1="5" y1="19" x2="5" y2="5"></line>
+              </svg>
+            </div>
+            <div class="playerbytton stopped" id="playbutton" data-name="play" title="Odtwarzaj/Pauza" aria-label="Odtwarzaj/Pauza">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <polygon points="6 4 20 12 6 20 6 4"></polygon>
+              </svg>
+            </div>
+            <div class="playerbytton" id="nextbutton" data-name="next" title="Następna" aria-label="Następna">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <polygon points="5 4 15 12 5 20 5 4"></polygon><line x1="19" y1="5" x2="19" y2="19"></line>
+              </svg>
+            </div>
+            <div class="playerbytton" id="volmbutton" data-name="volm" title="Głośniej -" aria-label="Głośniej -">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><line x1="23" y1="9" x2="17" y2="9"></line>
+              </svg>
+            </div>
+            <div class="playerbytton" id="volpbutton" data-name="volp" title="Głośniej +" aria-label="Głośniej +">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><line x1="17" y1="9" x2="23" y2="9"></line><line x1="20" y1="6" x2="20" y2="12"></line>
+              </svg>
+            </div>
+            <div class="playerbytton" id="eqalbutton" data-name="equalizer" title="Korektor" aria-label="Korektor">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <line x1="4" y1="21" x2="4" y2="14"></line><line x1="4" y1="10" x2="4" y2="3"></line><line x1="12" y1="21" x2="12" y2="12"></line><line x1="12" y1="8" x2="12" y2="3"></line><line x1="20" y1="21" x2="20" y2="16"></line><line x1="20" y1="12" x2="20" y2="3"></line><line x1="1" y1="14" x2="7" y2="14"></line><line x1="9" y1="8" x2="15" y2="8"></line><line x1="17" y1="16" x2="23" y2="16"></line>
+              </svg>
+            </div>
+          </div>
+
+          <div class="playerwrap">
+            <div id="equalizerwrap">
+              <div id="equalizerbg" class="hidden">
+                <ul id="equalizer">
+                  <li>
+                  <li>
+                    balans<span class="eqinfo" id="eqbalinfo">0</span>
+                    <input type="range" id="eqbal" class="slider" data-slaveid="eqbalinfo" name="balance" min="-16" max="16" value="0">
+                  </li>
+                  <li>
+                  <li>
+                    wysokie<span class="eqinfo" id="eqtrebleinfo">0</span>
+                    <input type="range" id="eqtreble" class="slider" data-slaveid="eqtrebleinfo" name="treble" min="-16" max="16" value="0">
+                  </li>
+                  <li>
+                  <li>
+                    średnie<span class="eqinfo" id="eqmiddleinfo">0</span>
+                    <input type="range" id="eqmiddle" class="slider" data-slaveid="eqmiddleinfo" name="middle" min="-16" max="16" value="0">
+                  </li>
+                  <li>
+                    niskie<span class="eqinfo" id="eqbassinfo">0</span>
+                    <input type="range" id="eqbass" class="slider" data-slaveid="eqbassinfo" name="bass" min="-16" max="16" value="0">
+                  </li>
+                  <li class="formbuttons">
+                    <div class="button" id="accept_button" data-name="equalizer">Zastosuj</div>
+                  </li>
+                </ul>
+              </div>
+              <div id="volnav">
+                <div id="modeline"><span id="modeweb" class="modeitem" data-name="web">WWW</span><span id="modesd" data-name="sd" class="modeitem hidden">SD</span></div>
+                <input type="range" id="volrange" class="slider" name="volume" data-slaveid="volinfo" min="0" max="254" value="0">
+              </div>
+              <div id="sdnav" class="hidden">
+                <div id="sdposvals">
+                  <div id="sdposvalscurrent">0:00</div>
+                  <div id="snuffle" class="playerbytton active" data-name="snuffle" title="Losowo" aria-label="Losowo"><span></span></div>
+                  <div id="sdposvalsend">0:00</div>
+                </div>
+                <input type="range" id="sdpos" class="slider" name="sdpos" min="0" max="100" value="0">
+              </div>
+              <ul id="playlist"></ul>
+            </div>
+          </div>
+
+        </div>
+
+        <div class="v-heroart">
+          <img src="logo.png" alt="Virtuoso" style="width:100%;max-width:100%;height:clamp(220px,28vh,320px);object-fit:contain;display:block;margin:0 auto 12px auto;flex:0 0 auto;">
+          <div class="v-card v-telemetry v-telemetry--right" style="padding:10px;">
+            <div class="v-sectiontitle">
+              <h2>Telemetria</h2>
+            </div>
+            <div class="v-grid">
+              <div class="v-card v-widget">
+                <div class="v-wlabel">RSSI</div>
+                <div class="v-wvalue font-mono"><span id="rsiinfo">RSSI: 0dBm</span></div>
+              </div>
+              <div class="v-card v-widget">
+                <div class="v-wlabel">Prędkość magistrali</div>
+                <div class="v-wvalue font-mono"><span id="i2cinfo">-</span> <small>I²C</small></div>
+              </div>
+              <div class="v-card v-widget">
+                <div class="v-wlabel">Tryb</div>
+                <div class="v-wvalue font-mono"><span id="v-playmode">WWW</span></div>
+              </div>
+              <div class="v-card v-widget">
+                <div class="v-wlabel">Głośność</div>
+                <div class="v-wvalue font-mono"><span id="volinfo">0</span> <small>/ 254</small></div>
+              </div>
+              <div class="v-card v-widget">
+                <div class="v-wlabel">Szybkość transmisji</div>
+                <div class="v-wvalue font-mono"><span id="bitinfo">szybkość transmisji: 0kBit</span></div>
+              </div>
+              <div class="v-card v-widget">
+                <div class="v-wlabel">Stan</div>
+                <div class="v-wvalue font-mono">POŁĄCZONO</div>
+              </div>
+            </div>
+          </div>
+
+          <div id="pleditorwrap" class="hidden">
+            <div id="pleditor">
+              <div class="formbuttons">
+                <label for="file-upload" class="button" data-name="plimport">Importuj</label><input id="file-upload" type="file" accept=".txt, .csv" onchange="doPlUpload(this)" hidden/>
+                <div class="button" data-name="plexport">Eksportuj</div>
+                <div class="button" data-name="pladd">Dodaj</div>
+                <div class="button" data-name="pldel">Usuń</div>
+                <div class="button" data-name="plsubmit">Zapisz</div>
+              </div>
+              <h2>Edytor playlisty<span onclick="showEditor()"></span></h2>
+              <div id="pleheader"><span class="pleno"></span><span class="space"><input type="checkbox" onclick="selectAll(this)" /></span><span class="plename">Nazwa</span><span class="pleurl">URL</span><span class="pleovol">Poziom</span></div>
+              <ol id="pleditorcontent">
+                <li class="pleitem">
+                  <span>001</span>
+                  <span class="plecheck"><input type="checkbox" class="plcb" /></span>
+                  <input class="pleinput plename" type="text" value="" maxlength="140" />
+                  <input class="pleinput pleurl" type="text" value="" maxlength="140" />
+                  <input class="pleinput pleovol" type="number" min="-30" max="30" step="1" value="0" />
+                </li>
+              </ol>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <div id="copy" style="margin-top:14px;color:rgba(156,163,175,.9);font-size:12px;">
+        Virtuoso | v%VERSION% | napędzane przez <a target="_blank" rel="noreferrer" href="https://github.com/e2002/yoradio/" style="color:rgba(0,229,255,.9);text-decoration:none;">ёRadio</a>
+      </div>
+    </main>
   </div>
-  <script src="script.js?%VERSION%"></script>
-  <script src="dragpl.js?%VERSION%"></script>
+
+  <script src="script.js?%VERSION%&ui=20260317"></script>
+  <script>
+    (function(){
+      var el = document.getElementById('i2cinfo');
+      if(!el) return;
+      var host = window.location.hostname;
+      var xhr = new XMLHttpRequest();
+      xhr.onreadystatechange = function() {
+        if (xhr.readyState !== 4) return;
+        if (xhr.status !== 200) return;
+        try{
+          var data = JSON.parse(xhr.responseText);
+          if(data && typeof data.i2c_hz === 'number'){
+            el.textContent = Math.round(data.i2c_hz / 1000) + 'kHz';
+          }
+        }catch(e){}
+      };
+      xhr.open('GET', 'http://' + host + '/api/i2c?' + Date.now(), true);
+      xhr.send(null);
+    })();
+  </script>
+  <script src="dragpl.js?%VERSION%&ui=20260317"></script>
+  <div id="vFabSave" title="Zapisz">Z</div>
+  <div id="vFabAdd" title="Dodaj">+</div>
+  <div id="vFabMove" title="Przenieś do pozycji">⇅</div>
+  <script>
+    (function(){
+      function isPLEditorVisible(){
+        var pe = document.getElementById('pleditorwrap');
+        return !!(pe && !pe.classList.contains('hidden'));
+      }
+      function patchPLEditor(){
+        if(window.__vPLEditorPatchDone) return;
+        if(typeof window.initPLEditor !== 'function') return;
+        window.__vPLEditorPatchDone = true;
+        var origInitPLEditor = window.initPLEditor;
+        window.initPLEditor = function(){
+          var force = !!window.__vPLEditorForceInit;
+          window.__vPLEditorForceInit = false;
+          var editorEmpty = true;
+          try{
+            var ple = document.getElementById('pleditorcontent');
+            editorEmpty = !ple || !ple.children || ple.children.length === 0;
+          }catch(e){}
+          var allowWhileVisible = force || editorEmpty || !!window.__vPlaylistDirty;
+          if(isPLEditorVisible() && !allowWhileVisible) return;
+          return origInitPLEditor.apply(this, arguments);
+        };
+      }
+      function markPlaylistDirty(){
+        window.__vPlaylistDirty = true;
+        window.__vPlaylistOkAt = 0;
+      }
+      function fetchPlaylistNow(){
+        try{
+          if(window.__vPlFetchInFlight) return;
+          if(typeof window.handlePlaylistData !== 'function') return;
+          var ul = document.getElementById('playlist');
+          if(!ul) return;
+          var pe = document.getElementById('pleditorwrap');
+          var editorVisible = !!(pe && !pe.classList.contains('hidden'));
+          var allowWhileEditorVisible = !!window.__vPlaylistDirty;
+          if(editorVisible && !allowWhileEditorVisible) return;
+          var now = Date.now();
+          window.__vPlFetchInFlight = true;
+          var host = (typeof window.hostname === 'string' && window.hostname) ? window.hostname : window.location.hostname;
+          var url = 'http://' + host + '/data/playlist.csv?' + now;
+          var xhr = new XMLHttpRequest();
+          xhr.onreadystatechange = function(){
+            if(xhr.readyState !== 4) return;
+            window.__vPlFetchInFlight = false;
+            if(xhr.status === 200 && xhr.responseText){
+              window.handlePlaylistData(xhr.responseText);
+              window.__vPlaylistOkAt = Date.now();
+            }
+          };
+          xhr.open('GET', url, true);
+          xhr.send(null);
+        }catch(e){
+          window.__vPlFetchInFlight = false;
+        }
+      }
+      function patchPlaylistRefresh(){
+        if(!window.__vShowEditorPatched && typeof window.showEditor === 'function'){
+          window.__vShowEditorPatched = true;
+          var origShowEditor = window.showEditor;
+          window.showEditor = function(){
+            var before = isPLEditorVisible();
+            var res = origShowEditor.apply(this, arguments);
+            var after = isPLEditorVisible();
+            if(before && !after && window.__vPlaylistDirty){
+              window.__vPlaylistDirty = false;
+              window.__vPlaylistTryAt = 0;
+              window.__vPlaylistOkAt = 0;
+              fetchPlaylistNow();
+              setTimeout(fetchPlaylistNow, 800);
+              setTimeout(fetchPlaylistNow, 1800);
+            }
+            return res;
+          };
+        }
+        if(!window.__vDoPlUploadPatched && typeof window.doPlUpload === 'function'){
+          window.__vDoPlUploadPatched = true;
+          var origDoPlUpload = window.doPlUpload;
+          window.doPlUpload = function(){
+            try{ markPlaylistDirty(); }catch(e){}
+            var res = origDoPlUpload.apply(this, arguments);
+            try{
+              window.__vPLEditorForceInit = true;
+              setTimeout(fetchPlaylistNow, 700);
+              setTimeout(fetchPlaylistNow, 1600);
+              setTimeout(fetchPlaylistNow, 3200);
+              setTimeout(function(){ window.__vPLEditorForceInit = true; if(typeof window.initPLEditor === 'function') window.initPLEditor(); }, 600);
+              setTimeout(function(){ window.__vPLEditorForceInit = true; if(typeof window.initPLEditor === 'function') window.initPLEditor(); }, 1600);
+              setTimeout(function(){ window.__vPLEditorForceInit = true; if(typeof window.initPLEditor === 'function') window.initPLEditor(); }, 3200);
+            }catch(e){}
+            return res;
+          };
+        }
+      }
+      function normalizeHostname(){
+        try{
+          var q = (window.location.search && window.location.search.length > 1) ? window.location.search.substring(1) : '';
+          var looksHost = /^[a-z0-9.-]+(:\\d+)?$/i.test(q);
+          if(!looksHost){
+            window.hostname = window.location.hostname;
+          }
+        }catch(e){}
+      }
+      function postCmd(cmd){
+        try{
+          var host = (typeof window.hostname === 'string' && window.hostname) ? window.hostname : window.location.hostname;
+          var xhr = new XMLHttpRequest();
+          xhr.open('POST', 'http://' + host + '/', true);
+          xhr.setRequestHeader('Content-type', 'application/x-www-form-urlencoded');
+          xhr.send(cmd + '=1');
+        }catch(e){}
+      }
+      function toggleHiddenById(id){
+        var el = document.getElementById(id);
+        if(!el) return;
+        if(el.classList.contains('hidden')) el.classList.remove('hidden');
+        else el.classList.add('hidden');
+      }
+      function toggleSDUi(){
+        try{
+          if(document.body && document.body.classList && document.body.classList.contains('sd-disabled')) return;
+        }catch(e){}
+        var sdb = document.getElementById('sdbutton');
+        if(sdb) sdb.classList.toggle('active');
+        var sdnav = document.getElementById('sdnav');
+        var volnav = document.getElementById('volnav');
+        if(!sdnav || !volnav) return;
+        if(sdb && sdb.classList.contains('active')){
+          sdnav.classList.remove('hidden');
+          volnav.classList.add('hidden');
+        }else{
+          sdnav.classList.add('hidden');
+          volnav.classList.remove('hidden');
+        }
+      }
+      function bindControl(id, action){
+        var el = document.getElementById(id);
+        if(!el) return;
+        if(el.getAttribute('data-v-bound') === '1') return;
+        el.setAttribute('data-v-bound', '1');
+        el.addEventListener('click', function(ev){
+          ev.stopImmediatePropagation();
+          try{ action(el); }catch(e){}
+        }, true);
+      }
+      function tick(){
+        patchPLEditor();
+        patchPlaylistRefresh();
+        normalizeHostname();
+        try{
+          if(document.body && document.body.classList) document.body.classList.add('v-ui');
+        }catch(e){}
+        var sdDisabled = false;
+        try{ sdDisabled = document.body && document.body.classList && document.body.classList.contains('sd-disabled'); }catch(e){}
+        (function(){
+          var navIds = sdDisabled ? ['dashbutton','playlistbutton','settingsbutton'] : ['dashbutton','playlistbutton','sdbutton','settingsbutton'];
+          function setActiveNav(activeId){
+            for(var i=0;i<navIds.length;i++){
+              var el = document.getElementById(navIds[i]);
+              if(!el) continue;
+              el.classList.remove('is-active');
+              el.classList.remove('border-l-4');
+              el.classList.remove('border-cyan-500');
+            }
+            var a = document.getElementById(activeId);
+            if(a){
+              a.classList.add('is-active');
+              a.classList.add('border-l-4');
+              a.classList.add('border-cyan-500');
+            }
+          }
+          if(!window.__vActiveNavInit){
+            window.__vActiveNavInit = true;
+            setActiveNav('dashbutton');
+          }
+          window.__vSetActiveNav = setActiveNav;
+        })();
+        bindControl('playlistbutton', function(){
+          if(typeof window.__vSetActiveNav === 'function') window.__vSetActiveNav('playlistbutton');
+          if(typeof window.showEditor === 'function') window.showEditor();
+          else toggleHiddenById('pleditorwrap');
+        });
+        if(!sdDisabled){
+          bindControl('sdbutton', function(){
+            if(typeof window.__vSetActiveNav === 'function') window.__vSetActiveNav('sdbutton');
+            if(typeof window.toggleSDCard === 'function') window.toggleSDCard();
+            else toggleSDUi();
+          });
+        }
+        bindControl('settingsbutton', function(){
+          if(typeof window.__vSetActiveNav === 'function') window.__vSetActiveNav('settingsbutton');
+          var host = (typeof window.hostname === 'string' && window.hostname) ? window.hostname : window.location.hostname;
+          window.location.href = 'http://' + host + '/settings';
+        });
+        bindControl('dashbutton', function(){
+          if(typeof window.__vSetActiveNav === 'function') window.__vSetActiveNav('dashbutton');
+          var host = (typeof window.hostname === 'string' && window.hostname) ? window.hostname : window.location.hostname;
+          window.location.href = 'http://' + host + '/';
+        });
+        bindControl('prevbutton', function(){ postCmd('prev'); });
+        bindControl('nextbutton', function(){ postCmd('next'); });
+        bindControl('volmbutton', function(){ postCmd('volm'); });
+        bindControl('volpbutton', function(){ postCmd('volp'); });
+        bindControl('eqalbutton', function(){
+          if(typeof window.showEqualizer === 'function') window.showEqualizer();
+          else toggleHiddenById('equalizerbg');
+        });
+        bindControl('playbutton', function(){
+          if(typeof window.playbutton === 'function') window.playbutton();
+          else postCmd('toggle');
+        });
+        (function(){
+          try{
+            var pm = document.getElementById('v-playmode');
+            if(pm){
+              var sdb = document.getElementById('sdbutton');
+              var isSD = !sdDisabled && ((sdb && sdb.classList && sdb.classList.contains('active')) || (document.body && document.body.classList && document.body.classList.contains('sd')));
+              pm.textContent = isSD ? 'SD' : 'WWW';
+            }
+          }catch(e){}
+        })();
+        if(sdDisabled){
+          try{
+            var sdnav = document.getElementById('sdnav');
+            var volnav = document.getElementById('volnav');
+            if(sdnav) sdnav.classList.add('hidden');
+            if(volnav) volnav.classList.remove('hidden');
+          }catch(e){}
+        }
+        (function(){
+          try{
+            if(window.__vPlFetchInFlight) return;
+            if(typeof window.handlePlaylistData !== 'function') return;
+            var ul = document.getElementById('playlist');
+            if(!ul) return;
+            var pe = document.getElementById('pleditorwrap');
+            if(pe && !pe.classList.contains('hidden')) return;
+            var now = Date.now();
+            var empty = !ul.children || ul.children.length === 0;
+            var due = !window.__vPlaylistOkAt || (now - window.__vPlaylistOkAt) > 15000;
+            if(!empty && !due) return;
+            if(window.__vPlaylistTryAt && (now - window.__vPlaylistTryAt) < 2000) return;
+            window.__vPlaylistTryAt = now;
+            window.__vPlFetchInFlight = true;
+            var host = (typeof window.hostname === 'string' && window.hostname) ? window.hostname : window.location.hostname;
+            var url = 'http://' + host + '/data/playlist.csv?' + now;
+            var xhr = new XMLHttpRequest();
+            xhr.onreadystatechange = function(){
+              if(xhr.readyState !== 4) return;
+              window.__vPlFetchInFlight = false;
+              if(xhr.status === 200 && xhr.responseText){
+                window.handlePlaylistData(xhr.responseText);
+                window.__vPlaylistOkAt = Date.now();
+              }
+            };
+            xhr.open('GET', url, true);
+            xhr.send(null);
+          }catch(e){
+            window.__vPlFetchInFlight = false;
+          }
+        })();
+        (function(){
+          try{
+            var pe = document.getElementById('pleditorwrap');
+            var bw = document.getElementById('blueprintwrap');
+            if(!pe || !bw) return;
+            if(pe.classList.contains('hidden')) bw.classList.remove('hidden');
+            else bw.classList.add('hidden');
+          }catch(e){}
+        })();
+        (function(){
+          var ids = ['prevbutton','playbutton','nextbutton','volmbutton','volpbutton','eqalbutton','snuffle','playlistbutton','sdbutton','settingsbutton'];
+          for(var i=0;i<ids.length;i++){
+            var el = document.getElementById(ids[i]);
+            if(el && !el.classList.contains('playerbytton')) el.classList.add('playerbytton');
+          }
+        })();
+        (function(){
+          if(window.__vPlayPatched) return;
+          if(typeof window.playercommand !== 'function') return;
+          window.__vPlayPatched = true;
+          window.playbutton = function(){
+            var btn = document.getElementById('playbutton');
+            if(!btn) return;
+            var isStopped = btn.classList.contains('stopped') || btn.getAttribute('class') === 'stopped';
+            var isPlaying = btn.classList.contains('playing') || btn.getAttribute('class') === 'playing';
+            if(isStopped){
+              btn.classList.remove('stopped');
+              btn.classList.add('playing');
+              btn.classList.add('playerbytton');
+              window.playercommand('start');
+              return;
+            }
+            if(isPlaying){
+              btn.classList.remove('playing');
+              btn.classList.add('stopped');
+              btn.classList.add('playerbytton');
+              window.playercommand('stop');
+              return;
+            }
+            btn.classList.toggle('playing');
+            btn.classList.toggle('stopped');
+            btn.classList.add('playerbytton');
+          };
+        })();
+      }
+      tick();
+      window.addEventListener('load', tick);
+      setInterval(tick, 1000);
+    })();
+  </script>
+  <script>
+    (function(){
+      function focusNewPLEntry(){
+        try{
+          var list = document.getElementById('pleditorcontent');
+          if(!list) return;
+          var items = list.querySelectorAll('li.pleitem');
+          if(!items || items.length === 0) return;
+          var last = items[items.length - 1];
+          if(last && typeof last.scrollIntoView === 'function'){
+            last.scrollIntoView({behavior:'smooth', block:'center', inline:'nearest'});
+          }
+          var input = last && (last.querySelector('.pleurl') || last.querySelector('.plename') || last.querySelector('input'));
+          if(input){
+            try{ input.focus(); }catch(e){}
+            try{ if(typeof input.select === 'function') input.select(); }catch(e){}
+          }
+        }catch(e){}
+      }
+      (function(){
+        function ensureFab(id, label, onClick){
+          var fab = document.getElementById(id);
+          if(!fab){
+            fab = document.createElement('div');
+            fab.id = id;
+            fab.textContent = label;
+            document.body.appendChild(fab);
+          }
+          if(fab.getAttribute('data-v-bound') !== '1'){
+            fab.setAttribute('data-v-bound','1');
+            fab.addEventListener('click', onClick, true);
+          }
+          return fab;
+        }
+        function renumberPlaylistEditor(){
+          try{
+            var list = document.getElementById('pleditorcontent');
+            if(!list) return;
+            var items = list.querySelectorAll('li.pleitem');
+            for(var i=0;i<items.length;i++){
+              var sp = items[i].querySelector('span');
+              if(!sp) continue;
+              var n = String(i + 1);
+              while(n.length < 3) n = '0' + n;
+              sp.textContent = n;
+            }
+          }catch(e){}
+        }
+        function moveEditorItemTo(targetPos){
+          try{
+            var list = document.getElementById('pleditorcontent');
+            if(!list) return;
+            var items = list.querySelectorAll('li.pleitem');
+            if(!items || items.length === 0) return;
+
+            var src = null;
+            var checked = list.querySelector('input.plcb:checked');
+            if(checked) src = checked.closest('li.pleitem');
+            if(!src) src = items[items.length - 1];
+            if(!src) return;
+
+            var total = items.length;
+            var pos = parseInt(targetPos, 10);
+            if(!pos || pos < 1) pos = 1;
+            if(pos > total) pos = total;
+            var currentIndex = Array.prototype.indexOf.call(list.children, src);
+            if(currentIndex === (pos - 1)) return;
+            var targetIndex = pos - 1;
+            var before = list.children[targetIndex];
+            if(currentIndex < targetIndex){
+              before = before ? before.nextSibling : null;
+            }
+            list.insertBefore(src, before);
+            renumberPlaylistEditor();
+
+            window.__vPlaylistDirty = true;
+
+            try{ src.scrollIntoView({behavior:'smooth', block:'center', inline:'nearest'}); }catch(e){}
+            try{
+              var input = src.querySelector('.pleurl') || src.querySelector('.plename') || src.querySelector('input');
+              if(input){ input.focus(); if(typeof input.select === 'function') input.select(); }
+            }catch(e){}
+          }catch(e){}
+        }
+        function updateFab(){
+          var saveFab = ensureFab('vFabSave', 'Z', function(){
+            try{
+              var btn = document.querySelector('#pleditor .formbuttons .button[data-name=\"plsubmit\"]');
+              if(btn) btn.click();
+            }catch(e){}
+          });
+          var addFab = ensureFab('vFabAdd', '+', function(){
+            try{
+              var btn = document.querySelector('#pleditor .formbuttons .button[data-name=\"pladd\"]');
+              if(btn) btn.click();
+            }catch(e){}
+          });
+          var moveFab = ensureFab('vFabMove', '⇅', function(){
+            try{
+              var p = prompt('Na którą pozycję przenieść zaznaczoną stację?\n(Jeśli nic nie zaznaczysz, przeniesie ostatnią)', '');
+              if(p === null) return;
+              moveEditorItemTo(p);
+            }catch(e){}
+          });
+          try{
+            var pe = document.getElementById('pleditorwrap');
+            var visible = !!(pe && !pe.classList.contains('hidden'));
+            if(visible){
+              saveFab.classList.add('v-show');
+              addFab.classList.add('v-show');
+              moveFab.classList.add('v-show');
+            }else{
+              saveFab.classList.remove('v-show');
+              addFab.classList.remove('v-show');
+              moveFab.classList.remove('v-show');
+            }
+          }catch(e){}
+        }
+        updateFab();
+        setInterval(updateFab, 500);
+      })();
+      function bindPlAddScroll(){
+        var btn = document.querySelector('#pleditor .formbuttons .button[data-name="pladd"]');
+        if(!btn || btn.getAttribute('data-v-bound') === '1') return;
+        btn.setAttribute('data-v-bound','1');
+        btn.addEventListener('click', function(){
+          try{
+            var list = document.getElementById('pleditorcontent');
+            var mo;
+            if(list && typeof MutationObserver !== 'undefined'){
+              mo = new MutationObserver(function(muts, obs){
+                try{ obs.disconnect(); }catch(e){}
+                setTimeout(focusNewPLEntry, 50);
+              });
+              mo.observe(list, {childList:true});
+            }
+            setTimeout(focusNewPLEntry, 300);
+            setTimeout(focusNewPLEntry, 800);
+          }catch(e){}
+        }, true);
+      }
+      function lateBind(){
+        bindPlAddScroll();
+        setTimeout(bindPlAddScroll, 500);
+        setTimeout(bindPlAddScroll, 1500);
+      }
+      if(document.readyState === 'loading'){
+        document.addEventListener('DOMContentLoaded', lateBind);
+      }else{
+        lateBind();
+      }
+    })();
+  </script>
+  <script>
+    (function(){
+      var ids = ['volrange','eqtreble','eqmiddle','eqbass','eqbal'];
+      var holds = {};
+      var tickStarted = false;
+      function nowMs(){ return Date.now ? Date.now() : (new Date()).getTime(); }
+      function updateSlave(input){
+        try{
+          var sid = input && input.dataset ? input.dataset.slaveid : null;
+          if(!sid) return;
+          var el = document.getElementById(sid);
+          if(el) el.textContent = input.value;
+        }catch(e){}
+      }
+      function install(id){
+        var el = document.getElementById(id);
+        if(!el || el.getAttribute('data-v-hold') === '1') return;
+        el.setAttribute('data-v-hold','1');
+        function arm(){
+          holds[id] = { until: nowMs() + 1400, value: String(el.value) };
+          updateSlave(el);
+          if(!tickStarted){
+            tickStarted = true;
+            setInterval(function(){
+              var t = nowMs();
+              for(var k in holds){
+                var h = holds[k];
+                if(!h) continue;
+                if(t > h.until){ delete holds[k]; continue; }
+                var inp = document.getElementById(k);
+                if(!inp) { delete holds[k]; continue; }
+                if(String(inp.value) !== h.value){
+                  inp.value = h.value;
+                  updateSlave(inp);
+                }
+              }
+            }, 120);
+          }
+        }
+        el.addEventListener('input', arm, true);
+        el.addEventListener('change', arm, true);
+        el.addEventListener('pointerdown', arm, true);
+        el.addEventListener('touchstart', arm, true);
+        el.addEventListener('mousedown', arm, true);
+      }
+      function scan(){
+        for(var i=0;i<ids.length;i++) install(ids[i]);
+      }
+      scan();
+      setInterval(scan, 800);
+    })();
+  </script>
 </body>
 </html>

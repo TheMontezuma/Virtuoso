@@ -12,7 +12,7 @@
 #elif RTC_MODULE==DS1307
 	class RTC: public RTC_DS1307 {
 #else
-	#  error ONLY DS3231 OR DS1307 MODULE SUPPORTED
+	#  error OBSŁUGIWANE SĄ TYLKO MODUŁY DS3231 LUB DS1307
 #endif
 	public:
 		bool init();

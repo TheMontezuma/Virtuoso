@@ -14,7 +14,7 @@ bool Telnet::_isIPSet(IPAddress ip) {
 
 bool Telnet::begin(bool quiet) {
   if(network.status==SDREADY) {
-    BOOTLOG("Ready in SD Mode!");
+    BOOTLOG("Gotowe w trybie SD!");
     BOOTLOG("------------------------------------------------");
     Serial.println("##[BOOT]#");
     return true;
@@ -24,9 +24,9 @@ bool Telnet::begin(bool quiet) {
     server.begin();
     server.setNoDelay(true);
     if(!quiet){
-      Serial.println("done");
+      Serial.println("gotowe");
       Serial.println("##[BOOT]#");
-      BOOTLOG("Ready! Go to http:/%s/ to configure", WiFi.localIP().toString().c_str());
+      BOOTLOG("Gotowe! Wejdź na http:/%s/ aby skonfigurować", WiFi.localIP().toString().c_str());
       BOOTLOG("------------------------------------------------");
       Serial.println("##[BOOT]#");
     }
@@ -52,7 +52,7 @@ void Telnet::cleanupClients() {
   for (int i = 0; i < MAX_TLN_CLIENTS; i++) {
     if (!clients[i].connected()) {
       if (clients[i]) {
-        Serial.printf("Client [%d] is %s\n", i, clients[i].connected() ? "connected" : "disconnected");
+        Serial.printf("Klient [%d] %s\n", i, clients[i].connected() ? "połączony" : "rozłączony");
         clients[i].stop();
       }
     }
@@ -80,7 +80,7 @@ void Telnet::loop() {
             clients[i].stop();
           }
           clients[i] = server.available();
-          if (!clients[i]) Serial.println("available broken");
+          if (!clients[i]) Serial.println("błąd: brak dostępnego klienta");
           on_connect(clients[i].remoteIP().toString().c_str(), i);
           clients[i].setNoDelay(true);
           emptyClientStream(clients[i]);
@@ -159,8 +159,8 @@ void Telnet::printf(uint8_t id, const char *format, ...) {
 }
 
 void Telnet::on_connect(const char* str, uint8_t clientId) {
-  Serial.printf("Telnet: [%d] %s connected\n", clientId, str);
-  print(clientId, "\nWelcome to ёRadio!\n(Use ^] + q  to disconnect.)\n> ");
+  Serial.printf("Telnet: [%d] %s połączono\n", clientId, str);
+  print(clientId, "\nWitaj w ёRadio!\n(Użyj ^] + q, aby się rozłączyć.)\n> ");
 }
 
 void Telnet::info() {
@@ -235,7 +235,7 @@ void Telnet::on_input(const char* str, uint8_t clientId) {
     int ainfo;
     if (sscanf(str, "audioinfo(%d)", &ainfo) == 1 || sscanf(str, "cli.audioinfo(\"%d\")", &ainfo) == 1 || sscanf(str, "audioinfo %d", &ainfo) == 1) {
       config.saveValue(&config.store.audioinfo, ainfo > 0);
-      printf(clientId, "new audioinfo value is: %d\n> ", config.store.audioinfo);
+      printf(clientId, "nowa wartość audioinfo: %d\n> ", config.store.audioinfo);
       return;
     }
     if (strcmp(str, "cli.smartstart") == 0 || strcmp(str, "smartstart") == 0) {
@@ -245,7 +245,7 @@ void Telnet::on_input(const char* str, uint8_t clientId) {
     int sstart;
     if (sscanf(str, "smartstart(%d)", &sstart) == 1 || sscanf(str, "cli.smartstart(\"%d\")", &sstart) == 1 || sscanf(str, "smartstart %d", &sstart) == 1) {
       config.saveValue(&config.store.smartstart, static_cast<uint8_t>(sstart));
-      printf(clientId, "new smartstart value is: %d\n> ", config.store.smartstart);
+      printf(clientId, "nowa wartość smartstart: %d\n> ", config.store.smartstart);
       return;
     }
     if (strcmp(str, "cli.list") == 0 || strcmp(str, "list") == 0) {
@@ -320,9 +320,9 @@ void Telnet::on_input(const char* str, uint8_t clientId) {
       if (tzm > 59) tzm = 59;
       config.setTimezone((int8_t)tzh, (int8_t)tzm);
       if(tzh<0){
-        printf(clientId, "new timezone offset: %03d:%02d\n", config.store.tzHour, config.store.tzMin);
+        printf(clientId, "nowe przesunięcie strefy: %03d:%02d\n", config.store.tzHour, config.store.tzMin);
       }else{
-        printf(clientId, "new timezone offset: %02d:%02d\n", config.store.tzHour, config.store.tzMin);
+        printf(clientId, "nowe przesunięcie strefy: %02d:%02d\n", config.store.tzHour, config.store.tzMin);
       }
       network.requestTimeSync(true);
       return;
@@ -332,9 +332,9 @@ void Telnet::on_input(const char* str, uint8_t clientId) {
       if (tzh > 14) tzh = 14;
       config.setTimezone((int8_t)tzh, 0);
       if(tzh<0){
-        printf(clientId, "new timezone offset: %03d:%02d\n", config.store.tzHour, config.store.tzMin);
+        printf(clientId, "nowe przesunięcie strefy: %03d:%02d\n", config.store.tzHour, config.store.tzMin);
       }else{
-        printf(clientId, "new timezone offset: %02d:%02d\n", config.store.tzHour, config.store.tzMin);
+        printf(clientId, "nowe przesunięcie strefy: %02d:%02d\n", config.store.tzHour, config.store.tzMin);
       }
       network.requestTimeSync(true);
       return;
@@ -352,19 +352,19 @@ void Telnet::on_input(const char* str, uint8_t clientId) {
     }
     if (sscanf(str, "sleep(%d,%d)", &tzh, &tzm) == 2 || sscanf(str, "cli.sleep(\"%d\",\"%d\")", &tzh, &tzm) == 2 || sscanf(str, "sleep %d %d", &tzh, &tzm) == 2) {
       if(tzh>0 && tzm>0) {
-        printf(clientId, "sleep for %d minutes after %d minutes ...\n> ", tzh, tzm);
+        printf(clientId, "uśpij na %d min po %d min...\n> ", tzh, tzm);
         config.sleepForAfter(tzh, tzm);
       }else{
-        printf(clientId, "##CMD_ERROR#\tunknown command <%s>\n> ", str);
+        printf(clientId, "##CMD_ERROR#\tnieznana komenda <%s>\n> ", str);
       }
       return;
     }
     if (sscanf(str, "sleep(%d)", &tzh) == 1 || sscanf(str, "cli.sleep(\"%d\")", &tzh) == 1 || sscanf(str, "sleep %d", &tzh) == 1) {
       if(tzh>0) {
-        printf(clientId, "sleep for %d minutes ...\n> ", tzh);
+        printf(clientId, "uśpij na %d min...\n> ", tzh);
         config.sleepForAfter(tzh);
       }else{
-        printf(clientId, "##CMD_ERROR#\tunknown command <%s>\n> ", str);
+        printf(clientId, "##CMD_ERROR#\tnieznana komenda <%s>\n> ", str);
       }
       return;
     }
@@ -385,7 +385,7 @@ void Telnet::on_input(const char* str, uint8_t clientId) {
     printf(clientId, "#WIFI.SCAN#\n");
     int n = WiFi.scanNetworks();
     if (n == 0) {
-        printf(clientId, "no networks found\n");
+        printf(clientId, "nie znaleziono sieci\n");
     } else {
       for (int i = 0; i < n; ++i) {
         printf(clientId, "%d", i + 1);
@@ -437,16 +437,16 @@ void Telnet::on_input(const char* str, uint8_t clientId) {
   char newssid[30], newpass[40];
   if (sscanf(str, "wifi.con(\"%[^\"]\",\"%[^\"]\")", newssid, newpass) == 2 || sscanf(str, "wifi.con(%[^,],%[^)])", newssid, newpass) == 2 || sscanf(str, "wifi.con(%[^ ] %[^)])", newssid, newpass) == 2 || sscanf(str, "wifi %[^ ] %s", newssid, newpass) == 2) {
     char buf[BUFLEN];
-    snprintf(buf, BUFLEN, "New SSID: \"%s\" with PASS: \"%s\" for next boot\n> ", newssid, newpass);
+    snprintf(buf, BUFLEN, "Nowy SSID: \"%s\" z HASŁEM: \"%s\" dla następnego startu\n> ", newssid, newpass);
     printf(clientId, buf);
-    printf(clientId, "...REBOOTING...\n> ");
+    printf(clientId, "...PONOWNE URUCHAMIANIE...\n> ");
     memset(buf, 0, BUFLEN);
     snprintf(buf, BUFLEN, "%s\t%s", newssid, newpass);
     config.saveWifiFromNextion(buf);
     return;
   }
   if (strcmp(str, "wifi.status") == 0 || strcmp(str, "status") == 0) {
-    printf(clientId, "#WIFI.STATUS#\nStatus:\t\t%d\nMode:\t\t%s\nIP:\t\t%s\nMask:\t\t%s\nGateway:\t%s\nRSSI:\t\t%d dBm\n##WIFI.STATUS#\n> ", 
+    printf(clientId, "#WIFI.STATUS#\nStatus:\t\t%d\nTryb:\t\t%s\nIP:\t\t%s\nMaska:\t\t%s\nBrama:\t\t%s\nRSSI:\t\t%d dBm\n##WIFI.STATUS#\n> ", 
       WiFi.status(), WiFi.getMode()==WIFI_STA?"WIFI_STA":"WIFI_AP", 
       WiFi.getMode()==WIFI_STA?WiFi.localIP().toString():WiFi.softAPIP().toString(),
       WiFi.getMode()==WIFI_STA?WiFi.subnetMask().toString():"255.255.255.0",
@@ -460,13 +460,13 @@ void Telnet::on_input(const char* str, uint8_t clientId) {
     return;
   }
   if (strcmp(str, "sys.heap") == 0 || strcmp(str, "heap") == 0) {
-    printf(clientId, "Free heap:\t%d bytes\n> ", xPortGetFreeHeapSize());
+    printf(clientId, "Wolny heap:\t%d bajtów\n> ", xPortGetFreeHeapSize());
     return;
   }
   if (strcmp(str, "wifi.discon") == 0 || strcmp(str, "discon") == 0 || strcmp(str, "disconnect") == 0) {
-    printf(clientId, "#WIFI.DISCON#\tdisconnected...\n> ");
+    printf(clientId, "#WIFI.DISCON#\trozłączono...\n> ");
     WiFi.disconnect();
     return;
   }
-  telnet.printf(clientId, "##CMD_ERROR#\tunknown command <%s>\n> ", str);
+  telnet.printf(clientId, "##CMD_ERROR#\tnieznana komenda <%s>\n> ", str);
 }

@@ -6,7 +6,7 @@ Projekt powstał z myślą o wyświetlaczu SSD1322, pojedynczym enkoderze, wyjś
 
 ### Główne cechy Virtuoso
 
-- Bazuje na stabilnym jądrze yoRadio / Maestro
+- Bazuje na stabilnym jądrze yoRadio / Maestro v5
 - Wyświetlacz: **SSD1322** (monochromatyczny, odcienie szarości)
 - Obsługa **pojedynczego enkodera** (CLK=2, DT=1, SW=42)
 - Wyjście audio:

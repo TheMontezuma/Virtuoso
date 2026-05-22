@@ -33,6 +33,7 @@ uint16_t m_rIndex=0;
 uint64_t m_bitBuffer = 0;
 uint8_t  m_bitBufferLen = 0;
 bool     m_f_OggS_found = false;
+uint32_t m_lastBitRate = 0;
 
 //----------------------------------------------------------------------------------------------------------------------
 //          FLAC INI SECTION
@@ -62,6 +63,15 @@ void FLACDecoder_ClearBuffer(){
     memset(FLACMetadataBlock, 0, sizeof(FLACMetadataBlock_t));
     memset(FLACsubFramesBuff, 0, sizeof(FLACsubFramesBuff_t));
     m_status = DECODE_FRAME;
+    m_lastBitRate = 0;
+    m_f_OggS_found = false;
+    m_rIndex = 0;
+    m_bytesAvail = 0;
+    m_blockSize = 0;
+    m_blockSizeLeft = 0;
+    m_validSamples = 0;
+    m_bitBuffer = 0;
+    m_bitBufferLen = 0;
     return;
 }
 //----------------------------------------------------------------------------------------------------------------------
@@ -69,6 +79,10 @@ void FLACDecoder_FreeBuffers(){
     if(FLACFrameHeader)    {free(FLACFrameHeader);   FLACFrameHeader   = NULL;}
     if(FLACMetadataBlock)  {free(FLACMetadataBlock); FLACMetadataBlock = NULL;}
     if(FLACsubFramesBuff)  {free(FLACsubFramesBuff); FLACsubFramesBuff = NULL;}
+}
+//----------------------------------------------------------------------------------------------------------------------
+bool FLACDecoder_IsInit(){
+    return (FLACFrameHeader != NULL) && (FLACMetadataBlock != NULL) && (FLACsubFramesBuff != NULL);
 }
 //----------------------------------------------------------------------------------------------------------------------
 //            B I T R E A D E R
@@ -139,16 +153,8 @@ int FLACFindSyncWord(unsigned char *buf, int nBytes) {
 int FLACFindOggSyncWord(unsigned char *buf, int nBytes){
     int i;
 
-    /* find byte-aligned syncword - need 13 matching bits */
-    for (i = 0; i < nBytes - 1; i++) {
-        if ((buf[i + 0] & 0xFF) == 0xFF  && (buf[i + 1] & 0xF8) == 0xF8) {
-            FLACDecoderReset();
-            log_i("FLAC sync found");
-            return i;
-        }
-    }
     /* find byte-aligned OGG Magic - OggS */
-    for (i = 0; i < nBytes - 1; i++) {
+    for (i = 0; i < nBytes - 3; i++) {
         if ((buf[i + 0] == 'O') && (buf[i + 1] == 'g') && (buf[i + 2] == 'g') && (buf[i + 3] == 'S')) {
             FLACDecoderReset();
             log_i("OggS found");
@@ -254,7 +260,7 @@ int8_t FLACDecode(uint8_t *inbuf, int *bytesLeft, short *outbuf){
             if(FLACFrameHeader->sampleSizeCode == 5) FLACMetadataBlock->bitsPerSample = 20;
             if(FLACFrameHeader->sampleSizeCode == 6) FLACMetadataBlock->bitsPerSample = 24;
         }
-        if(FLACMetadataBlock->bitsPerSample > 16) return ERR_FLAC_BITS_PER_SAMPLE_TOO_BIG;
+        if(FLACMetadataBlock->bitsPerSample > 24) return ERR_FLAC_BITS_PER_SAMPLE_TOO_BIG;
         if(FLACMetadataBlock->bitsPerSample < 8 ) return ERR_FLAG_BITS_PER_SAMPLE_UNKNOWN;
 
         if(!FLACMetadataBlock->sampleRate){
@@ -336,9 +342,10 @@ int8_t FLACDecode(uint8_t *inbuf, int *bytesLeft, short *outbuf){
 
         for (int i = 0; i < blockSize; i++) {
             for (int j = 0; j < FLACMetadataBlock->numChannels; j++) {
-                int val = FLACsubFramesBuff->samplesBuffer[j][i + offset];
+                int32_t val = FLACsubFramesBuff->samplesBuffer[j][i + offset];
+                if (FLACMetadataBlock->bitsPerSample > 16) val >>= (FLACMetadataBlock->bitsPerSample - 16);
                 if (FLACMetadataBlock->bitsPerSample == 8) val += 128;
-                outbuf[2*i+j] = val;
+                outbuf[2*i+j] = (int16_t)val;
             }
         }
 
@@ -353,6 +360,12 @@ int8_t FLACDecode(uint8_t *inbuf, int *bytesLeft, short *outbuf){
     alignToByte();
     readUint(16);
     m_bytesDecoded = *bytesLeft - m_bytesAvail;
+    if(m_blockSize && FLACMetadataBlock->sampleRate && m_bytesDecoded > 0){
+        uint64_t inst = (uint64_t)m_bytesDecoded * 8ULL * (uint64_t)FLACMetadataBlock->sampleRate / (uint64_t)m_blockSize;
+        uint32_t inst32 = (uint32_t)inst;
+        if(m_lastBitRate) m_lastBitRate = (m_lastBitRate * 7 + inst32) / 8;
+        else m_lastBitRate = inst32;
+    }
 //    log_i("m_bytesDecoded %i", m_bytesDecoded);
 //    m_compressionRatio = (float)m_bytesDecoded / (float)m_blockSize * FLACMetadataBlock->numChannels * (16/8);
 //    log_i("m_compressionRatio % f", m_compressionRatio);
@@ -388,7 +401,7 @@ uint32_t FLACGetBitRate(){
         float BitsPerSamp = (float)FLACMetadataBlock->audioDataLength / (float)FLACMetadataBlock->totalSamples * 8;
         return ((uint32_t)BitsPerSamp * FLACMetadataBlock->sampleRate);
     }
-    return 0;
+    return m_lastBitRate;
 }
 //----------------------------------------------------------------------------------------------------------------------
 uint32_t FLACGetAudioFileDuration() {
@@ -449,7 +462,7 @@ int8_t decodeSubframe(uint8_t sampleDepth, uint8_t ch) {
     sampleDepth -= shift;
 
     if(type == 0){  // Constant coding
-        int16_t s= readSignedInt(sampleDepth);
+        int32_t s = readSignedInt(sampleDepth);
         for(int i=0; i < m_blockSize; i++){
             FLACsubFramesBuff->samplesBuffer[ch][i] = s;
         }
@@ -553,4 +566,3 @@ void restoreLinearPrediction(uint8_t ch, uint8_t shift) {
     }
 }
 //----------------------------------------------------------------------------------------------------------------------
-

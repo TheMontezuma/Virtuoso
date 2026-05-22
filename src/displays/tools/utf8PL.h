@@ -1,24 +1,90 @@
-#ifndef utf8RusGFX_h
-#define  utf8RusGFX_h
+#ifndef utf8PLGFX_h
+#define utf8PLGFX_h
 
 // Polish chars: ąćęłńóśźż ĄĆĘŁŃÓŚŹŻ
 
-char* DspCore::utf8Rus(const char* str, bool uppercase) {
+char* DspCore::utf8PL(const char* str, bool uppercase) {
  int index = 0;
   static char strn[BUFLEN];
   strlcpy(strn, str, BUFLEN); 
  
-  if (uppercase) { // Przełącz wielkie i małe litery
-  for (char *iter = strn; *iter != '\0'; ++iter)
-  *iter = toupper(*iter); 
+  if (uppercase) {
+    for (char *iter = strn; *iter != '\0'; ++iter) {
+      unsigned char ch = (unsigned char)*iter;
+      if (ch >= 'a' && ch <= 'z') *iter = (char)(ch - 32);
+    }
   }
 
-if(L10N_LANGUAGE==EN)  return strn;
   while (strn[index])
   { 
-    if (strn[index] == 0xC5) // Jeśli pierwszym bajtem znaków UTF-8 jest C5, umieść je wszystkie w tej grupie!
+    if ((uint8_t)strn[index] == 0xC2) {
+      uint8_t b = (uint8_t)strn[index + 1];
+      bool mapped = true;
+      switch (b) {
+        case 0xB1: strn[index] = uppercase ? 0xB7 : 0xB8; break;
+        case 0xA1: strn[index] = 0xB7; break;
+        case 0xB9: strn[index] = uppercase ? 0xB7 : 0xB8; break;
+        case 0xA5: strn[index] = 0xB7; break;
+        case 0xE6: strn[index] = uppercase ? 0xC4 : 0xBD; break;
+        case 0xC6: strn[index] = 0xC4; break;
+        case 0xEA: strn[index] = uppercase ? 0xD7 : 0xD6; break;
+        case 0xCA: strn[index] = 0xD7; break;
+        case 0xB3: strn[index] = uppercase ? 0xD0 : 0xCF; break;
+        case 0xA3: strn[index] = 0xD0; break;
+        case 0xF1: strn[index] = uppercase ? 0xC1 : 0xC0; break;
+        case 0xD1: strn[index] = 0xC1; break;
+        case 0xF3: strn[index] = uppercase ? 0xBF : 0xBE; break;
+        case 0xD3: strn[index] = 0xBF; break;
+        case 0xB6: strn[index] = uppercase ? 0xCC : 0xCB; break;
+        case 0xA6: strn[index] = 0xCC; break;
+        case 0x9C: strn[index] = uppercase ? 0xCC : 0xCB; break;
+        case 0x8C: strn[index] = 0xCC; break;
+        case 0xBC: strn[index] = uppercase ? 0xBC : 0xBB; break;
+        case 0xAC: strn[index] = 0xBC; break;
+        case 0x9F: strn[index] = uppercase ? 0xBC : 0xBB; break;
+        case 0x8F: strn[index] = 0xBC; break;
+        case 0xBF: strn[index] = uppercase ? 0xBA : 0xB9; break;
+        case 0xAF: strn[index] = 0xBA; break;
+        default: mapped = false; break;
+      }
+      if (mapped) {
+        int sind = index + 2;
+        while (strn[sind]) {
+          strn[sind - 1] = strn[sind];
+          sind++;
+        }
+        strn[sind - 1] = 0;
+      }
+    }
+    switch ((uint8_t)strn[index]) {
+      case 0xB1: strn[index] = uppercase ? 0xB7 : 0xB8; break;
+      case 0xA1: strn[index] = 0xB7; break;
+      case 0xB9: strn[index] = uppercase ? 0xB7 : 0xB8; break;
+      case 0xA5: strn[index] = 0xB7; break;
+      case 0xE6: strn[index] = uppercase ? 0xC4 : 0xBD; break;
+      case 0xC6: strn[index] = 0xC4; break;
+      case 0xEA: strn[index] = uppercase ? 0xD7 : 0xD6; break;
+      case 0xCA: strn[index] = 0xD7; break;
+      case 0xB3: strn[index] = uppercase ? 0xD0 : 0xCF; break;
+      case 0xA3: strn[index] = 0xD0; break;
+      case 0xF1: strn[index] = uppercase ? 0xC1 : 0xC0; break;
+      case 0xD1: strn[index] = 0xC1; break;
+      case 0xF3: strn[index] = uppercase ? 0xBF : 0xBE; break;
+      case 0xD3: strn[index] = 0xBF; break;
+      case 0xB6: strn[index] = uppercase ? 0xCC : 0xCB; break;
+      case 0xA6: strn[index] = 0xCC; break;
+      case 0x9C: strn[index] = uppercase ? 0xCC : 0xCB; break;
+      case 0x8C: strn[index] = 0xCC; break;
+      case 0xBC: strn[index] = uppercase ? 0xBC : 0xBB; break;
+      case 0xAC: strn[index] = 0xBC; break;
+      case 0x9F: strn[index] = uppercase ? 0xBC : 0xBB; break;
+      case 0x8F: strn[index] = 0xBC; break;
+      case 0xBF: strn[index] = uppercase ? 0xBA : 0xB9; break;
+      case 0xAF: strn[index] = 0xBA; break;
+    }
+    if ((uint8_t)strn[index] == 0xC5)
     {
-      switch (strn[index + 1]) {
+      switch ((uint8_t)strn[index + 1]) {
         case 0x82: {    
 			if (!uppercase){ 
 			strn[index] = 0xCf;} // *ł
@@ -158,11 +224,11 @@ if(L10N_LANGUAGE==EN)  return strn;
         sind++;
       }
     strn[sind - 1] = 0;
-    }
+	}
 
-if (strn[index] == 0xC4)  // Jeśli pierwszym bajtem znaków UTF-8 jest C4, umieść je wszystkie w tej grupie!
+if ((uint8_t)strn[index] == 0xC4)
     {
-	  switch (strn[index + 1]) {
+	  switch ((uint8_t)strn[index + 1]) {
 
 		case 0x85: {
 			if (!uppercase){ 
@@ -259,9 +325,9 @@ if (strn[index] == 0xC4)  // Jeśli pierwszym bajtem znaków UTF-8 jest C4, umie
     
 	}
 
-if (strn[index] == 0xC3)  // Jeśli pierwszym bajtem znaków UTF-8 jest C3, umieść je wszystkie w tej grupie!
+if ((uint8_t)strn[index] == 0xC3)
     {
-	  switch (strn[index + 1]) {
+	  switch ((uint8_t)strn[index + 1]) {
 
 		case 0xB3: {
 			if (!uppercase){ 

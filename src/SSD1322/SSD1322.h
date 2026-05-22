@@ -66,11 +66,14 @@ class Jamis_SSD1322 : public Adafruit_GFX {
     void         drawPixel(int16_t x, int16_t y, uint16_t color);
     virtual void drawFastHLine(int16_t x, int16_t y, int16_t w, uint16_t color);
     virtual void drawFastVLine(int16_t x, int16_t y, int16_t h, uint16_t color);
+    void         writeFillRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t color);
     void         ssd1322_command(uint8_t c);
     boolean      getPixel(int16_t x, int16_t y);
     uint8_t      *getBuffer(void);
     void         oled_command(uint8_t c) { ssd1322_command(c); }
     void         invertDisplay(boolean flag);
+    void         setContrast(uint8_t contrastCurrent);
+    void         setMasterContrast(uint8_t masterContrast);
   private:
     inline void  SPIwrite(uint8_t d) __attribute__((always_inline));
     void         drawFastHLineInternal(int16_t x, int16_t y, int16_t w,

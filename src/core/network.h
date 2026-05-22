@@ -11,6 +11,7 @@
 #define TSYNC_DELAY       3600000     // 1000*60*60   = 1 hour
 #define WEATHER_STRING_L  254
 #define STOCKS_STRING_L   254
+#define CALENDAR_STRING_L 128
 
 enum n_Status_e { CONNECTED, SOFT_AP, FAILED, SDREADY };
 
@@ -20,19 +21,24 @@ class MyNetwork {
     struct tm timeinfo;
     bool firstRun, forceTimeSync, forceWeather;
     bool forceStocks;
+    bool forceCalendar;
     bool lostPlaying = false, beginReconnect = false;
-    //uint8_t tsFailCnt, wsFailCnt;
     Ticker ctimer;
     char *weatherBuf;
     char *stocksBuf;
+    char *calendar1Buf;
+    char *calendar2Buf;
     bool trueWeather;
   public:
     MyNetwork() {};
     void begin();
     void requestTimeSync(bool withTelnetOutput=false, uint8_t clientId=0);
     void requestWeatherSync();
-    void requestStocksSync();
+    void requestWeatherFetchNow();
+    void requestCalendarSync();
+    void requestCalendarFetchNow();
     void setWifiParams();
+    bool applyTimezone(bool forceSync=true);
     bool wifiBegin(bool silent=false);
   private:
     Ticker rtimer;
