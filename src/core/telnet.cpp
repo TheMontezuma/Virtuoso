@@ -4,6 +4,7 @@
 #include "config.h"
 #include "player.h"
 #include "network.h"
+#include "display.h"
 #include "telnet.h"
 
 Telnet telnet;
@@ -341,6 +342,20 @@ void Telnet::on_input(const char* str, uint8_t clientId) {
     }
     if (sscanf(str, "dspon(%d)", &tzh) == 1 || sscanf(str, "cli.dspon(\"%d\")", &tzh) == 1 || sscanf(str, "dspon %d", &tzh) == 1) {
       config.setDspOn(tzh!=0);
+      return;
+    }
+    if (strcmp(str, "pwr") == 0) {
+      if (display.mode() == SLEEPING) {
+        config.setDspOn(true);
+        config.screensaverTicks = SCREENSAVERSTARTUPDELAY;
+        config.screensaverPlayingTicks = SCREENSAVERSTARTUPDELAY;
+        config.isScreensaver = false;
+        display.putRequest(NEWMODE, CLEAR);
+        display.putRequest(NEWMODE, PLAYER);
+      } else {
+        player.sendCommand({PR_STOP, 0});
+        display.putRequest(NEWMODE, SLEEPING);
+      }
       return;
     }
     if (sscanf(str, "dim(%d)", &tzh) == 1 || sscanf(str, "cli.dim(\"%d\")", &tzh) == 1 || sscanf(str, "dim %d", &tzh) == 1) {
