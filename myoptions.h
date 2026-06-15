@@ -36,6 +36,8 @@
 #define ENC2_BTNR 41
 #define ENC2_BTNL 40
 #define ENC2_BTNB 39
+#define ENC2_INTERNALPULLUP true
+#define ENC2_HALFQUARD true
 
 #define IR_PIN			14
 #define IR_TIMEOUT      50
@@ -44,6 +46,7 @@
 
 #define BT_MUTE_PIN 18
 #define BT_KEY_PIN 17
+#define BT_RELAY_INVERT true
 
 // VU METER STYLE
 // Now controlled via Web Interface (System Settings)
@@ -67,5 +70,8 @@
 #define AUDIOBUFFER_MULTIPLIER2 64
 #define DMA_BUFCOUNT 12
 #define DMA_BUFCOUNT_PSRAM 24
-#define AUDIO_PREFILL_FRAMES 2
+#define AUDIO_PREFILL_FRAMES 20
+
+#define YOENCODER_DEBOUNCE_US 1500
+#define YOENCODER_STABLE_US 0
 #endif

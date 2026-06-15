@@ -86,7 +86,7 @@ void Display::init() {
   while (_bootStep == 0) { delay(10); }
   //_pager.begin();
   //_bootScreen();
-  Serial.println("gotowe");
+  Serial.println("done");
 }
 
 void Display::_bootScreen() {
@@ -556,7 +556,7 @@ void Display::resetQueue() {
 
 void Display::_drawPlaylist() {
   dsp.drawPlaylist(currentPlItem);
-  _setReturnTicker(8);  //-------------------------wyjscie do ekranu glownego------------------------------------------
+  _setReturnTicker(8);
 }
 
 void Display::_drawNextStationNum(uint16_t num) {

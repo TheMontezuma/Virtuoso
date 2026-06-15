@@ -12,6 +12,9 @@
 #ifndef BT_RELAY_ACTIVE_LOW
 #define BT_RELAY_ACTIVE_LOW true
 #endif
+#ifndef BT_RELAY_INVERT
+#define BT_RELAY_INVERT false
+#endif
 
 #ifndef BT_MUTE_PIN
 #define BT_MUTE_PIN 255
@@ -22,11 +25,21 @@
 #ifndef BT_MUTE_SWITCH_DELAY_MS
 #define BT_MUTE_SWITCH_DELAY_MS 120
 #endif
+#ifndef BT_KEY_ACTIVE_LOW
+#define BT_KEY_ACTIVE_LOW false
+#endif
+#ifndef BT_AUTOPAIR_MS
+#define BT_AUTOPAIR_MS 0
+#endif
 
 static inline void _setBtMute(bool muteOn) {
 #if BT_MUTE_PIN != 255
-  uint8_t v = muteOn ? (BT_MUTE_ACTIVE_LOW ? LOW : HIGH) : (BT_MUTE_ACTIVE_LOW ? HIGH : LOW);
-  digitalWrite(BT_MUTE_PIN, v);
+  if (muteOn) {
+    pinMode(BT_MUTE_PIN, OUTPUT);
+    digitalWrite(BT_MUTE_PIN, BT_MUTE_ACTIVE_LOW ? LOW : HIGH);
+  } else {
+    pinMode(BT_MUTE_PIN, INPUT);
+  }
 #else
   (void)muteOn;
 #endif
@@ -34,8 +47,18 @@ static inline void _setBtMute(bool muteOn) {
 
 static inline void _initBtMutePin() {
 #if BT_MUTE_PIN != 255
-  _setBtMute(true);
-  pinMode(BT_MUTE_PIN, OUTPUT);
+  _setBtMute(false);
+#endif
+}
+
+static inline void _setBtRelayForMode(uint8_t playMode) {
+#if BT_RELAY_PIN != 255
+  bool active = playMode == PM_BLUETOOTH;
+  if (BT_RELAY_INVERT) active = !active;
+  uint8_t v = active ? (BT_RELAY_ACTIVE_LOW ? LOW : HIGH) : (BT_RELAY_ACTIVE_LOW ? HIGH : LOW);
+  digitalWrite(BT_RELAY_PIN, v);
+#else
+  (void)playMode;
 #endif
 }
 void Config::changeMode(int newmode){
@@ -79,12 +102,14 @@ void Config::changeMode(int newmode){
   #endif
 
   if(store.play_mode == PM_BLUETOOTH){
-      _setBtMute(true);
-      #if BT_RELAY_PIN != 255
-      digitalWrite(BT_RELAY_PIN, BT_RELAY_ACTIVE_LOW ? LOW : HIGH);
-      #endif
-      if (BT_MUTE_SWITCH_DELAY_MS > 0) delay(BT_MUTE_SWITCH_DELAY_MS);
       _setBtMute(false);
+      _setBtRelayForMode(store.play_mode);
+#if BT_KEY_PIN != 255 && BT_AUTOPAIR_MS > 0
+      pinMode(BT_KEY_PIN, OUTPUT);
+      digitalWrite(BT_KEY_PIN, BT_KEY_ACTIVE_LOW ? LOW : HIGH);
+      delay(BT_AUTOPAIR_MS);
+      digitalWrite(BT_KEY_PIN, BT_KEY_ACTIVE_LOW ? HIGH : LOW);
+#endif
       player.sendCommand({PR_STOP, 0});
       
       setStation("Bluetooth");
@@ -102,10 +127,8 @@ void Config::changeMode(int newmode){
       netserver.requestOnChange(BITRATE, 0);
       return;
   }else{
-      _setBtMute(true);
-      #if BT_RELAY_PIN != 255
-      digitalWrite(BT_RELAY_PIN, BT_RELAY_ACTIVE_LOW ? HIGH : LOW);
-      #endif
+      _setBtMute(false);
+      _setBtRelayForMode(store.play_mode);
   }
 
   saveValue(&store.play_mode, store.play_mode, true, true);
@@ -370,9 +393,8 @@ void Config::_initHW(){
   #endif
   _initBtMutePin();
   #if BT_RELAY_PIN!=255
-    uint8_t v = (getMode() == PM_BLUETOOTH) ? (BT_RELAY_ACTIVE_LOW ? LOW : HIGH) : (BT_RELAY_ACTIVE_LOW ? HIGH : LOW);
-    digitalWrite(BT_RELAY_PIN, v);
     pinMode(BT_RELAY_PIN, OUTPUT);
+    _setBtRelayForMode(getMode());
   #endif
 }
 
@@ -702,7 +724,13 @@ void Config::loadStation(uint16_t ls) {
     memset(station.url, 0, BUFLEN);
     memset(station.name, 0, BUFLEN);
     strncpy(station.name, sName, BUFLEN);
-    strncpy(station.url, sUrl, BUFLEN);
+    if (!strcmp(sUrl, "http://stream.radioparadise.com/mellow") || !strcmp(sUrl, "https://stream.radioparadise.com/mellow")) {
+      strncpy(station.url, "http://stream.radioparadise.com/mellow-flacm", BUFLEN);
+    } else if (!strcmp(sUrl, "http://stream.radioparadise.com/mellow/") || !strcmp(sUrl, "https://stream.radioparadise.com/mellow/")) {
+      strncpy(station.url, "http://stream.radioparadise.com/mellow-flacm", BUFLEN);
+    } else {
+      strncpy(station.url, sUrl, BUFLEN);
+    }
     station.ovol = sOvol;
     setLastStation(ls);
   }

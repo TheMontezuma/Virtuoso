@@ -65,7 +65,7 @@ void Player::init() {
   #endif
   _loadVol(config.store.volume);
   setConnectionTimeout(1700, 3700);
-  Serial.println("gotowe");
+  Serial.println("done");
 }
 
 void Player::sendCommand(playerRequestParams_t request){
@@ -96,14 +96,6 @@ void Player::_stop(bool alreadyStopped){
   if(config.getMode() == PM_BLUETOOTH) {
       _status = STOPPED;
       setOutputPins(false);
-      if(MUTE_PIN!=255) digitalWrite(MUTE_PIN, !MUTE_VAL);
-      config.station.bitrate = 0;
-      config.setBitrateFormat(BF_UNCNOWN);
-      netserver.requestOnChange(BITRATE, 0);
-      display.putRequest(DBITRATE);
-      display.putRequest(PSTOP);
-      setDefaults();
-      if(!alreadyStopped) stopSong();
       return;
   }
   if(config.getMode()==PM_SDCARD && !alreadyStopped) config.sdResumePos = player.getFilePos();
@@ -202,6 +194,7 @@ void Player::_play(uint16_t stationId) {
   log_i("%s called, stationId=%d", __func__, stationId);
   setError("");
   remoteStationName = false;
+  stopSong();
   config.setDspOn(1);
   config.vuThreshold = 0;
   //display.putRequest(PSTOP);
@@ -212,7 +205,7 @@ void Player::_play(uint16_t stationId) {
   }
   setOutputPins(false);
   //config.setTitle(config.getMode()==PM_WEB?const_PlConnect:"");
-  config.setTitle(config.getMode()==PM_WEB?const_PlConnect:"[następny utwór]");
+  config.setTitle(config.getMode()==PM_WEB?const_PlConnect:"[next track]");
   config.station.bitrate=0;
   config.setBitrateFormat(BF_UNCNOWN);
   config.loadStation(stationId);
@@ -224,7 +217,6 @@ void Player::_play(uint16_t stationId) {
   display.putRequest(NEWSTATION);
   netserver.requestOnChange(STATION, 0);
   netserver.loop();
-  //netserver.loop();
   config.setSmartStart(0);
   bool isConnected = false;
   if(config.getMode()==PM_SDCARD && SDC_CS!=255){
@@ -249,8 +241,8 @@ void Player::_play(uint16_t stationId) {
     if (player_on_start_play) player_on_start_play();
     pm.on_start_play();
   }else{
-    telnet.printf("##ERROR#:\tBłąd połączenia z %s\n", config.station.url);
-    SET_PLAY_ERROR("Błąd połączenia z %s", config.station.url);
+    telnet.printf("##ERROR#:\tError connecting to %s\n", config.station.url);
+    SET_PLAY_ERROR("Error connecting to %s", config.station.url);
     _stop(true);
   };
 }

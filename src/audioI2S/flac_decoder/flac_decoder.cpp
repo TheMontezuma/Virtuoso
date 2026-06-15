@@ -153,14 +153,34 @@ int FLACFindSyncWord(unsigned char *buf, int nBytes) {
 int FLACFindOggSyncWord(unsigned char *buf, int nBytes){
     int i;
 
-    /* find byte-aligned OGG Magic - OggS */
     for (i = 0; i < nBytes - 3; i++) {
-        if ((buf[i + 0] == 'O') && (buf[i + 1] == 'g') && (buf[i + 2] == 'g') && (buf[i + 3] == 'S')) {
-            FLACDecoderReset();
-            log_i("OggS found");
-            m_f_OggS_found = true;
-            return i;
+        if ((buf[i + 0] != 'O') || (buf[i + 1] != 'g') || (buf[i + 2] != 'g') || (buf[i + 3] != 'S')) continue;
+
+        if (i + 27 > nBytes) return -1;
+
+        const uint8_t header_type_flag = buf[i + 5];
+        const uint8_t page_segments = buf[i + 26];
+
+        const int lacingTableStart = i + 27;
+        const int headerSize = 27 + page_segments;
+
+        if (i + headerSize > nBytes) return -1;
+
+        int contSkip = 0;
+        if (header_type_flag & 0x01) {
+            for (int j = 0; j < page_segments; j++) {
+                const uint8_t seg = buf[lacingTableStart + j];
+                contSkip += seg;
+                if (seg < 255) break;
+            }
         }
+
+        const int payloadStart = i + headerSize + contSkip;
+        if (payloadStart >= nBytes) return -1;
+
+        FLACDecoderReset();
+        m_f_OggS_found = false;
+        return payloadStart;
     }
     return -1;
 }

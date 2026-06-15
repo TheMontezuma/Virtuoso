@@ -22,6 +22,9 @@ private:
 	portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED;
 	portMUX_TYPE buttonMux = portMUX_INITIALIZER_UNLOCKED;
 	volatile long encoder0Pos = 0;
+	volatile uint32_t lastIsrUs = 0;
+	volatile uint8_t lastState2b = 0xFF;
+	uint16_t debounceUs = 0;
 
 	volatile int8_t lastMovementDirection = 0; //1 right; -1 left
 	volatile unsigned long lastMovementAt = 0;
@@ -65,5 +68,7 @@ public:
 	unsigned long getAcceleration() { return this->rotaryAccelerationCoef; }
 	void setAcceleration(unsigned long acceleration) { this->rotaryAccelerationCoef = acceleration; }
 	void disableAcceleration() { setAcceleration(0); }
+	void setDebounceUs(uint16_t debounce) { this->debounceUs = debounce; }
+	uint16_t getDebounceUs() { return this->debounceUs; }
 };
 #endif

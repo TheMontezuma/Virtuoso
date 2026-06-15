@@ -156,6 +156,10 @@ void ticks() {
     rtc.getTime(&network.timeinfo);
     mktime(&network.timeinfo);
     display.putRequest(CLOCK);
+  } else if(network.timeinfo.tm_year>100 || network.status == SDREADY) {
+    network.timeinfo.tm_sec++;
+    mktime(&network.timeinfo);
+    display.putRequest(CLOCK);
   }
 #else
   if(network.timeinfo.tm_year>100 || network.status == SDREADY) {
