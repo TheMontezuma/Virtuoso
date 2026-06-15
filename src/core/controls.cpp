@@ -133,7 +133,6 @@ void initControls() {
   encoder.setup(readEncoderISR);
   encoder.setBoundaries(0, 254, true);
   encoder.setAcceleration(config.store.encacc);
-  encoder.setDebounceUs(800);
 #endif
 
 #if ENC2_BTNL != 255
@@ -141,7 +140,6 @@ void initControls() {
   encoder2.setup(readEncoder2ISR);
   encoder2.setBoundaries(0, 254, true);
   encoder2.setAcceleration(config.store.encacc);
-  encoder2.setDebounceUs(800);
 #endif
 
 #if ISPUSHBUTTONS
@@ -247,37 +245,10 @@ void loopControls() {
 //----------------------------------------------------------------
 #if ENC_BTNL != 255 || ENC2_BTNL != 255
 void encodersLoop(yoEncoder* enc, bool first) {
+  if (network.status != CONNECTED && network.status != SDREADY) return;
   if (display.mode() == LOST) return;
-  int8_t encoderDelta = (int8_t)enc->encoderChanged();
+  int8_t encoderDelta = enc->encoderChanged();
   if (encoderDelta != 0) {
-    uint8_t idx = first ? 0 : 1;
-    if (encoderDelta > 6) encoderDelta = 6;
-    if (encoderDelta < -6) encoderDelta = -6;
-
-    int8_t dir = (encoderDelta > 0) ? 1 : -1;
-    uint8_t steps = (uint8_t)abs(encoderDelta);
-    if (display.mode() != STATIONS) {
-      static int8_t lockDir[2] = {0, 0};
-      static uint8_t oppSteps[2] = {0, 0};
-      static uint32_t lockMs[2] = {0, 0};
-      uint32_t now = millis();
-      if (lockDir[idx] == 0) {
-        lockDir[idx] = dir;
-        lockMs[idx] = now;
-      } else if (dir != lockDir[idx]) {
-        oppSteps[idx] = (uint8_t)min((int)255, (int)oppSteps[idx] + (int)steps);
-        if (oppSteps[idx] < 2 && (int32_t)(now - lockMs[idx]) < 250) {
-          return;
-        }
-        lockDir[idx] = dir;
-        oppSteps[idx] = 0;
-        lockMs[idx] = now;
-      } else {
-        oppSteps[idx] = 0;
-        lockMs[idx] = now;
-      }
-    }
-
 #if defined(DUMMYDISPLAY) && !defined(USE_NEXTION)
     uint8_t encBtnState = digitalRead(first ? ENC_BTNB : ENC2_BTNB);
     first = first ? (first && encBtnState) : (!encBtnState);
@@ -291,15 +262,13 @@ void encodersLoop(yoEncoder* enc, bool first) {
       else player.prev();
     }
 #else
-    uint8_t maxSteps = (display.mode() == STATIONS) ? 4 : 12;
-    if (steps > maxSteps) steps = maxSteps;
     if (display.mode() == STATIONS) {
-      for (uint8_t i = 0; i < steps; i++) controlsEvent(dir > 0);
+      controlsEvent(encoderDelta > 0);
     } else {
       if (display.mode() == PLAYER) {
         display.putRequest(NEWMODE, STATIONS);
       } else {
-        controlsEvent(dir > 0, (int8_t)(dir * (int8_t)steps));
+        controlsEvent(encoderDelta > 0, encoderDelta);
       }
     }
 #endif

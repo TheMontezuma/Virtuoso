@@ -36,8 +36,6 @@
 #define ENC2_BTNR 41
 #define ENC2_BTNL 40
 #define ENC2_BTNB 39
-#define ENC2_INTERNALPULLUP true
-#define ENC2_HALFQUARD true
 
 #define IR_PIN			14
 #define IR_TIMEOUT      50
@@ -71,6 +69,4 @@
 #define DMA_BUFCOUNT_PSRAM 24
 #define AUDIO_PREFILL_FRAMES 20
 
-#define YOENCODER_DEBOUNCE_US 1500
-#define YOENCODER_STABLE_US 0
 #endif
