@@ -46,7 +46,6 @@
 
 #define BT_MUTE_PIN 18
 #define BT_KEY_PIN 17
-#define BT_RELAY_INVERT true
 
 // VU METER STYLE
 // Now controlled via Web Interface (System Settings)
