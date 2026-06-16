@@ -69,6 +69,8 @@ class Player: public Audio {
     void stopInfo();
     void setOutputPins(bool isPlaying);
     void setResumeFilePos(uint32_t pos) { _resumeFilePos = pos; }
+    void fullI2SStop();  // Fully stop I2S and disable pins for Bluetooth mode
+    void reinitI2S();    // Reinitialize I2S pins and peripheral when coming back from Bluetooth
 };
 
 extern Player player;

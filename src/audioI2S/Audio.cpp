@@ -3310,7 +3310,7 @@ void Audio::processWebStream() {
         }
 
         uint32_t prefillFrames = AUDIO_PREFILL_FRAMES;
-        if((m_codec == CODEC_FLAC || m_codec == CODEC_OGG_FLAC) && prefillFrames < 15) prefillFrames = 15;
+        if((m_codec == CODEC_FLAC || m_codec == CODEC_OGG_FLAC) && prefillFrames < 30) prefillFrames = 30;
         if(InBuff.bufferFilled() > (maxFrameSize * prefillFrames) && !f_stream) {  // waiting for buffer filled
             f_stream = true;  // ready to play the audio data
             uint16_t filltime = millis() - m_t0;
@@ -3376,12 +3376,7 @@ void Audio::processWebStream() {
 
     // play audio data - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     if(!f_stream) return; // 1. guard
-    uint16_t minChunk = maxFrameSize;
-    if(m_codec == CODEC_FLAC || m_codec == CODEC_OGG_FLAC){
-        minChunk = 8192;
-        if(minChunk > maxFrameSize) minChunk = maxFrameSize;
-    }
-    bool a = InBuff.bufferFilled() >= minChunk;
+    bool a = InBuff.bufferFilled() >= maxFrameSize;
     bool b = (m_audioDataSize  > 0) && (m_audioDataSize <= audioDataCount + maxFrameSize);
     if(!a && !b) return; // 2. guard   fill < frame && last frame(s)
 
@@ -3391,13 +3386,7 @@ void Audio::processWebStream() {
         if(m_audioDataSize - audioDataCount < maxFrameSize){
             data2decode = m_audioDataSize - audioDataCount;
         }
-        else {
-            if(m_codec == CODEC_FLAC || m_codec == CODEC_OGG_FLAC){
-                if(data2decode < minChunk) return;
-            }else{
-                return;
-            }
-        }
+        else return;
     }
     else data2decode = maxFrameSize;
 

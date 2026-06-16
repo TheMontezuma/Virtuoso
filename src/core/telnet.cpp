@@ -8,17 +8,6 @@
 
 Telnet telnet;
 
-static void maskValue(const char* in, char* out, size_t outSize) {
-  if (!out || outSize == 0) return;
-  out[0] = 0;
-  if (!in) return;
-  const size_t n = strlen(in);
-  if (n == 0) return;
-  const size_t k = (n < (outSize - 1)) ? n : (outSize - 1);
-  memset(out, '*', k);
-  out[k] = 0;
-}
-
 bool Telnet::_isIPSet(IPAddress ip) {
   return ip.toString() == "0.0.0.0";
 }
@@ -418,12 +407,10 @@ void Telnet::on_input(const char* str, uint8_t clientId) {
     File file = SPIFFS.open(SSIDS_PATH, "r");
     if (file && !file.isDirectory()) {
       char sSid[BUFLEN], sPas[BUFLEN];
-      char sPasMasked[BUFLEN];
       uint8_t c = 1;
       while (file.available()) {
         if (config.parseSsid(file.readStringUntil('\n').c_str(), sSid, sPas)) {
-          maskValue(sPas, sPasMasked, sizeof(sPasMasked));
-          printf(clientId, "%d: %s, %s\n", c, sSid, sPasMasked);
+          printf(clientId, "%d: %s, %s\n", c, sSid, sPas);
           c++;
         }
       }
@@ -436,14 +423,10 @@ void Telnet::on_input(const char* str, uint8_t clientId) {
     File file = SPIFFS.open(SSIDS_PATH, "r");
     if (file && !file.isDirectory()) {
       char sSid[BUFLEN], sPas[BUFLEN];
-      char sPasMasked[BUFLEN];
       uint8_t c = 1;
       while (file.available()) {
         if (config.parseSsid(file.readStringUntil('\n').c_str(), sSid, sPas)) {
-          if (c == config.store.lastSSID) {
-            maskValue(sPas, sPasMasked, sizeof(sPasMasked));
-            printf(clientId, "%d: %s, %s\n", c, sSid, sPasMasked);
-          }
+          if(c==config.store.lastSSID) printf(clientId, "%d: %s, %s\n", c, sSid, sPas);
           c++;
         }
       }
@@ -454,10 +437,8 @@ void Telnet::on_input(const char* str, uint8_t clientId) {
   char newssid[30], newpass[40];
   if (sscanf(str, "wifi.con(\"%[^\"]\",\"%[^\"]\")", newssid, newpass) == 2 || sscanf(str, "wifi.con(%[^,],%[^)])", newssid, newpass) == 2 || sscanf(str, "wifi.con(%[^ ] %[^)])", newssid, newpass) == 2 || sscanf(str, "wifi %[^ ] %s", newssid, newpass) == 2) {
     char buf[BUFLEN];
-    char newpassMasked[BUFLEN];
-    maskValue(newpass, newpassMasked, sizeof(newpassMasked));
-    snprintf(buf, BUFLEN, "Nowy SSID: \"%s\" z HASŁEM: \"%s\" dla następnego startu\n> ", newssid, newpassMasked);
-    printf(clientId, "%s", buf);
+    snprintf(buf, BUFLEN, "Nowy SSID: \"%s\" z HASŁEM: \"%s\" dla następnego startu\n> ", newssid, newpass);
+    printf(clientId, buf);
     printf(clientId, "...PONOWNE URUCHAMIANIE...\n> ");
     memset(buf, 0, BUFLEN);
     snprintf(buf, BUFLEN, "%s\t%s", newssid, newpass);

@@ -12,9 +12,6 @@
 #ifndef BT_RELAY_ACTIVE_LOW
 #define BT_RELAY_ACTIVE_LOW true
 #endif
-#ifndef BT_RELAY_INVERT
-#define BT_RELAY_INVERT false
-#endif
 
 #ifndef BT_MUTE_PIN
 #define BT_MUTE_PIN 255
@@ -25,21 +22,11 @@
 #ifndef BT_MUTE_SWITCH_DELAY_MS
 #define BT_MUTE_SWITCH_DELAY_MS 120
 #endif
-#ifndef BT_KEY_ACTIVE_LOW
-#define BT_KEY_ACTIVE_LOW false
-#endif
-#ifndef BT_AUTOPAIR_MS
-#define BT_AUTOPAIR_MS 0
-#endif
 
 static inline void _setBtMute(bool muteOn) {
 #if BT_MUTE_PIN != 255
-  if (muteOn) {
-    pinMode(BT_MUTE_PIN, OUTPUT);
-    digitalWrite(BT_MUTE_PIN, BT_MUTE_ACTIVE_LOW ? LOW : HIGH);
-  } else {
-    pinMode(BT_MUTE_PIN, INPUT);
-  }
+  uint8_t v = muteOn ? (BT_MUTE_ACTIVE_LOW ? LOW : HIGH) : (BT_MUTE_ACTIVE_LOW ? HIGH : LOW);
+  digitalWrite(BT_MUTE_PIN, v);
 #else
   (void)muteOn;
 #endif
@@ -47,18 +34,8 @@ static inline void _setBtMute(bool muteOn) {
 
 static inline void _initBtMutePin() {
 #if BT_MUTE_PIN != 255
-  _setBtMute(false);
-#endif
-}
-
-static inline void _setBtRelayForMode(uint8_t playMode) {
-#if BT_RELAY_PIN != 255
-  bool active = playMode == PM_BLUETOOTH;
-  if (BT_RELAY_INVERT) active = !active;
-  uint8_t v = active ? (BT_RELAY_ACTIVE_LOW ? LOW : HIGH) : (BT_RELAY_ACTIVE_LOW ? HIGH : LOW);
-  digitalWrite(BT_RELAY_PIN, v);
-#else
-  (void)playMode;
+  _setBtMute(true);
+  pinMode(BT_MUTE_PIN, OUTPUT);
 #endif
 }
 void Config::changeMode(int newmode){
@@ -102,15 +79,24 @@ void Config::changeMode(int newmode){
   #endif
 
   if(store.play_mode == PM_BLUETOOTH){
+      Serial.println("=== Przełączanie na tryb Bluetooth ===");
+      // 1. Najpierw wyłącz wyjście audio (MUTE)
+      _setBtMute(true);
+      Serial.println("- Wyciszono audio");
+      delay(100);
+      // 2. Zatrzymaj I2S i ustaw piny na LOW
+      player.fullI2SStop();
+      Serial.println("- Zatrzymano I2S, piny ustawione na LOW");
+      // 3. Przełącz przekaźnik na BT (HIGH, bo BT_RELAY_ACTIVE_LOW false)
+      #if BT_RELAY_PIN != 255
+        digitalWrite(BT_RELAY_PIN, HIGH);  // Wymuś HIGH dla BT
+        Serial.println("- Ustawiono pin przekaźnika na HIGH (BT)");
+      #endif
+      // 4. Daj przekaźnikowi czas na przełączenie
+      delay(200);
+      // 5. Włącz wyjście audio (odmutuj)
       _setBtMute(false);
-      _setBtRelayForMode(store.play_mode);
-#if BT_KEY_PIN != 255 && BT_AUTOPAIR_MS > 0
-      pinMode(BT_KEY_PIN, OUTPUT);
-      digitalWrite(BT_KEY_PIN, BT_KEY_ACTIVE_LOW ? LOW : HIGH);
-      delay(BT_AUTOPAIR_MS);
-      digitalWrite(BT_KEY_PIN, BT_KEY_ACTIVE_LOW ? HIGH : LOW);
-#endif
-      player.sendCommand({PR_STOP, 0});
+      Serial.println("- Odciszono audio");
       
       setStation("Bluetooth");
       setTitle("");
@@ -125,10 +111,28 @@ void Config::changeMode(int newmode){
       saveValue(&store.play_mode, store.play_mode, true, true);
       netserver.requestOnChange(GETPLAYERMODE, 0);
       netserver.requestOnChange(BITRATE, 0);
+      Serial.println("=== Gotowe, tryb Bluetooth aktywny ===");
       return;
   }else{
-      _setBtMute(false);
-      _setBtRelayForMode(store.play_mode);
+      Serial.println("=== Przełączanie na tryb Radio ===");
+      // 1. Najpierw wyłącz wyjście audio
+      _setBtMute(true);
+      Serial.println("- Wyciszono audio");
+      delay(100);
+      // 2. Przełącz przekaźnik na RADIO (LOW)
+      #if BT_RELAY_PIN != 255
+        digitalWrite(BT_RELAY_PIN, LOW);  // Wymuś LOW dla RADIO
+        Serial.println("- Ustawiono pin przekaźnika na LOW (Radio)");
+      #endif
+      // 3. Daj przekaźnikowi czas na przełączenie
+      delay(200);
+      // 4. Ponownie zainicjuj I2S
+      if (oldMode == PM_BLUETOOTH) {
+        player.reinitI2S();
+        Serial.println("- Ponownie zainicjowano I2S");
+      }
+      // 5. Włącz wyjście audio później, gdy zacznie grać
+      Serial.println("=== Gotowe, tryb Radio aktywny ===");
   }
 
   saveValue(&store.play_mode, store.play_mode, true, true);
@@ -393,8 +397,13 @@ void Config::_initHW(){
   #endif
   _initBtMutePin();
   #if BT_RELAY_PIN!=255
+    // Najpierw ustaw pin na LOW (tryb RADIO domyślny)
     pinMode(BT_RELAY_PIN, OUTPUT);
-    _setBtRelayForMode(getMode());
+    digitalWrite(BT_RELAY_PIN, LOW);
+    // Jeśli ostatnim trybem był BT, to przełącz na BT
+    if (getMode() == PM_BLUETOOTH) {
+      digitalWrite(BT_RELAY_PIN, HIGH);
+    }
   #endif
 }
 
@@ -724,13 +733,7 @@ void Config::loadStation(uint16_t ls) {
     memset(station.url, 0, BUFLEN);
     memset(station.name, 0, BUFLEN);
     strncpy(station.name, sName, BUFLEN);
-    if (!strcmp(sUrl, "http://stream.radioparadise.com/mellow") || !strcmp(sUrl, "https://stream.radioparadise.com/mellow")) {
-      strncpy(station.url, "http://stream.radioparadise.com/mellow-flacm", BUFLEN);
-    } else if (!strcmp(sUrl, "http://stream.radioparadise.com/mellow/") || !strcmp(sUrl, "https://stream.radioparadise.com/mellow/")) {
-      strncpy(station.url, "http://stream.radioparadise.com/mellow-flacm", BUFLEN);
-    } else {
-      strncpy(station.url, sUrl, BUFLEN);
-    }
+    strncpy(station.url, sUrl, BUFLEN);
     station.ovol = sOvol;
     setLastStation(ls);
   }

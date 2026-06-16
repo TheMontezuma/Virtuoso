@@ -156,10 +156,6 @@ void ticks() {
     rtc.getTime(&network.timeinfo);
     mktime(&network.timeinfo);
     display.putRequest(CLOCK);
-  } else if(network.timeinfo.tm_year>100 || network.status == SDREADY) {
-    network.timeinfo.tm_sec++;
-    mktime(&network.timeinfo);
-    display.putRequest(CLOCK);
   }
 #else
   if(network.timeinfo.tm_year>100 || network.status == SDREADY) {
@@ -186,13 +182,24 @@ void MyNetwork::WiFiReconnected(WiFiEvent_t event, WiFiEventInfo_t info){
   network.beginReconnect = false;
   player.lockOutput = false;
   delay(100);
-  display.putRequest(NEWMODE, PLAYER);
+  displayMode_e currentDisplayMode = display.mode();
+  // Don't switch to PLAYER if we were in sleeping/screensaver/screenblank mode
+  if (currentDisplayMode != SLEEPING && currentDisplayMode != SCREENSAVER && currentDisplayMode != SCREENBLANK) {
+    display.putRequest(NEWMODE, PLAYER);
+  }
   if(config.getMode()==PM_SDCARD) {
     network.status=CONNECTED;
     display.putRequest(NEWIP, 0);
   }else{
-    display.putRequest(NEWMODE, PLAYER);
-    if (network.lostPlaying) player.sendCommand({PR_PLAY, config.lastStation()});
+    if (currentDisplayMode != SLEEPING && currentDisplayMode != SCREENSAVER && currentDisplayMode != SCREENBLANK) {
+      display.putRequest(NEWMODE, PLAYER);
+    }
+    if (network.lostPlaying) {
+      // Only resume playing if we were not in sleeping mode
+      if (currentDisplayMode != SLEEPING && currentDisplayMode != SCREENSAVER && currentDisplayMode != SCREENBLANK) {
+        player.sendCommand({PR_PLAY, config.lastStation()});
+      }
+    }
   }
   #ifdef MQTT_ROOT_TOPIC
     connectToMqtt();
@@ -208,7 +215,11 @@ void MyNetwork::WiFiLostConnection(WiFiEvent_t event, WiFiEventInfo_t info){
     }else{
       network.lostPlaying = player.isRunning();
       if (network.lostPlaying) { player.lockOutput = true; player.sendCommand({PR_STOP, 0}); }
-      display.putRequest(NEWMODE, LOST);
+      // Don't switch to LOST mode if already in sleeping/screensaver/screenblank mode (keep the clock!)
+      displayMode_e currentDisplayMode = display.mode();
+      if (currentDisplayMode != SLEEPING && currentDisplayMode != SCREENSAVER && currentDisplayMode != SCREENBLANK) {
+        display.putRequest(NEWMODE, LOST);
+      }
     }
   }
   network.beginReconnect = true;

@@ -821,6 +821,7 @@ void NetServer::onWsMessage(void *arg, uint8_t *data, size_t len, uint8_t client
       if (strcmp(cmd, "encacceleration") == 0) {
         uint16_t valb = atoi(val);
         setEncAcceleration(valb);
+        config.saveValue(&config.store.encacc, valb);
         return;
       }
       if (strcmp(cmd, "irtlp") == 0) {
@@ -1189,12 +1190,6 @@ void handleHTTPArgs(AsyncWebServerRequest * request) {
         strcmp(request->url().c_str(), TMP_PATH) == 0 || 
         strcmp(request->url().c_str(), PLAYLIST_SD_PATH) == 0 || 
         strcmp(request->url().c_str(), INDEX_SD_PATH) == 0) {
-#ifdef SSIDS_PATH
-      if (strcmp(request->url().c_str(), SSIDS_PATH) == 0 && network.status == CONNECTED) {
-        request->send(404);
-        return;
-      }
-#endif
 #ifdef MQTT_ROOT_TOPIC
       if (strcmp(request->url().c_str(), PLAYLIST_PATH) == 0) while (mqttplaylistblock) vTaskDelay(5);
 #endif

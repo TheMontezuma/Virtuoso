@@ -65,7 +65,7 @@ void Player::init() {
   #endif
   _loadVol(config.store.volume);
   setConnectionTimeout(1700, 3700);
-  Serial.println("done");
+  Serial.println("gotowe");
 }
 
 void Player::sendCommand(playerRequestParams_t request){
@@ -96,6 +96,14 @@ void Player::_stop(bool alreadyStopped){
   if(config.getMode() == PM_BLUETOOTH) {
       _status = STOPPED;
       setOutputPins(false);
+      if(MUTE_PIN!=255) digitalWrite(MUTE_PIN, !MUTE_VAL);
+      config.station.bitrate = 0;
+      config.setBitrateFormat(BF_UNCNOWN);
+      netserver.requestOnChange(BITRATE, 0);
+      display.putRequest(DBITRATE);
+      display.putRequest(PSTOP);
+      setDefaults();
+      if(!alreadyStopped) stopSong();
       return;
   }
   if(config.getMode()==PM_SDCARD && !alreadyStopped) config.sdResumePos = player.getFilePos();
@@ -194,7 +202,6 @@ void Player::_play(uint16_t stationId) {
   log_i("%s called, stationId=%d", __func__, stationId);
   setError("");
   remoteStationName = false;
-  stopSong();
   config.setDspOn(1);
   config.vuThreshold = 0;
   //display.putRequest(PSTOP);
@@ -205,7 +212,7 @@ void Player::_play(uint16_t stationId) {
   }
   setOutputPins(false);
   //config.setTitle(config.getMode()==PM_WEB?const_PlConnect:"");
-  config.setTitle(config.getMode()==PM_WEB?const_PlConnect:"[next track]");
+  config.setTitle(config.getMode()==PM_WEB?const_PlConnect:"[następny utwór]");
   config.station.bitrate=0;
   config.setBitrateFormat(BF_UNCNOWN);
   config.loadStation(stationId);
@@ -217,6 +224,7 @@ void Player::_play(uint16_t stationId) {
   display.putRequest(NEWSTATION);
   netserver.requestOnChange(STATION, 0);
   netserver.loop();
+  //netserver.loop();
   config.setSmartStart(0);
   bool isConnected = false;
   if(config.getMode()==PM_SDCARD && SDC_CS!=255){
@@ -241,8 +249,8 @@ void Player::_play(uint16_t stationId) {
     if (player_on_start_play) player_on_start_play();
     pm.on_start_play();
   }else{
-    telnet.printf("##ERROR#:\tError connecting to %s\n", config.station.url);
-    SET_PLAY_ERROR("Error connecting to %s", config.station.url);
+    telnet.printf("##ERROR#:\tBłąd połączenia z %s\n", config.station.url);
+    SET_PLAY_ERROR("Błąd połączenia z %s", config.station.url);
     _stop(true);
   };
 }
@@ -335,4 +343,54 @@ void Player::setVol(uint8_t volume) {
   _volTicks = millis();
   _volTimer = true;
   player.sendCommand({PR_VOL, volume});
+}
+
+void Player::fullI2SStop() {
+  log_i("%s called", __func__);
+  _stop();  // Stop playback first
+  // Set I2S pins to OUTPUT LOW to prevent floating signals (conflicts with Bluetooth)
+  #if I2S_DOUT != 255
+    pinMode(I2S_DOUT, OUTPUT);
+    digitalWrite(I2S_DOUT, LOW);
+  #endif
+  #if I2S_BCLK != 255
+    pinMode(I2S_BCLK, OUTPUT);
+    digitalWrite(I2S_BCLK, LOW);
+  #endif
+  #if I2S_LRC != 255
+    pinMode(I2S_LRC, OUTPUT);
+    digitalWrite(I2S_LRC, LOW);
+  #endif
+  #if I2S_MCLK != 255
+    pinMode(I2S_MCLK, OUTPUT);
+    digitalWrite(I2S_MCLK, LOW);
+  #endif
+}
+
+void Player::reinitI2S() {
+  log_i("%s called", __func__);
+  // Najpierw ustaw piny na OUTPUT LOW na krótko
+  #if I2S_DOUT != 255
+    pinMode(I2S_DOUT, OUTPUT);
+    digitalWrite(I2S_DOUT, LOW);
+  #endif
+  #if I2S_BCLK != 255
+    pinMode(I2S_BCLK, OUTPUT);
+    digitalWrite(I2S_BCLK, LOW);
+  #endif
+  #if I2S_LRC != 255
+    pinMode(I2S_LRC, OUTPUT);
+    digitalWrite(I2S_LRC, LOW);
+  #endif
+  #if I2S_MCLK != 255
+    pinMode(I2S_MCLK, OUTPUT);
+    digitalWrite(I2S_MCLK, LOW);
+  #endif
+  delay(20);
+  // Reconfigure I2S pins
+  #if I2S_DOUT != 255
+    #if !I2S_INTERNAL
+      setPinout(I2S_BCLK, I2S_LRC, I2S_DOUT, -1, I2S_MCLK);
+    #endif
+  #endif
 }

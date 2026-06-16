@@ -86,7 +86,7 @@ void Display::init() {
   while (_bootStep == 0) { delay(10); }
   //_pager.begin();
   //_bootScreen();
-  Serial.println("done");
+  Serial.println("gotowe");
 }
 
 void Display::_bootScreen() {
@@ -326,7 +326,11 @@ void Display::_swichMode(displayMode_e newmode) {
   nextion.putRequest({ NEWMODE, newmode });
 #endif
   if (config.getMode() == PM_BLUETOOTH && (newmode == SCREENSAVER || newmode == SCREENBLANK)) return;
-  if (newmode == _mode || (network.status != CONNECTED && network.status != SDREADY)) return;
+  if (newmode == _mode) return;
+  // Don't check network status if we're going to or already in sleeping/screensaver/screenblank mode
+  bool isSleepMode = (_mode == SLEEPING || _mode == SCREENSAVER || _mode == SCREENBLANK);
+  bool goingToSleepMode = (newmode == SLEEPING || newmode == SCREENSAVER || newmode == SCREENBLANK);
+  if (!isSleepMode && !goingToSleepMode && (network.status != CONNECTED && network.status != SDREADY)) return;
   displayMode_e prevMode = _mode;
   _mode = newmode;
   dsp.setScrollId(NULL);
@@ -556,7 +560,7 @@ void Display::resetQueue() {
 
 void Display::_drawPlaylist() {
   dsp.drawPlaylist(currentPlItem);
-  _setReturnTicker(8);
+  _setReturnTicker(8);  //-------------------------wyjscie do ekranu glownego------------------------------------------
 }
 
 void Display::_drawNextStationNum(uint16_t num) {

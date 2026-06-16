@@ -7,18 +7,9 @@
 
 #include "yoEncoder.h"
 
-#ifndef YOENCODER_DEBOUNCE_US
-#define YOENCODER_DEBOUNCE_US 2500
-#endif
 void IRAM_ATTR yoEncoder::readEncoder_ISR()
 {
 
-	uint32_t nowUs = micros();
-	if (debounceUs > 0) {
-		uint32_t d = nowUs - lastIsrUs;
-		if (d < debounceUs) return;
-		lastIsrUs = nowUs;
-	}
 	unsigned long now = millis();
 	portENTER_CRITICAL_ISR(&(this->mux));
 	if (this->isEnabled)
@@ -27,13 +18,7 @@ void IRAM_ATTR yoEncoder::readEncoder_ISR()
 		/**/
 		this->old_AB <<= 2; //remember previous state
 
-		uint8_t s1 = ((digitalRead(this->encoderBPin)) ? (1 << 1) : 0) | ((digitalRead(this->encoderAPin)) ? (1 << 0) : 0);
-		int8_t ENC_PORT = (int8_t)s1;
-		if ((uint8_t)ENC_PORT == lastState2b) {
-			portEXIT_CRITICAL_ISR(&(this->mux));
-			return;
-		}
-		lastState2b = (uint8_t)ENC_PORT;
+		int8_t ENC_PORT = ((digitalRead(this->encoderBPin)) ? (1 << 1) : 0) | ((digitalRead(this->encoderAPin)) ? (1 << 0) : 0);
 
 		this->old_AB |= (ENC_PORT & 0x03); //add current state
 
@@ -69,11 +54,14 @@ void IRAM_ATTR yoEncoder::readEncoder_ISR()
 						{
 							millisAfterLastMotion = accelerationShortCutffMillis; // limit to maximum acceleration
 						}
-						long extra = (long)(rotaryAccelerationCoef / millisAfterLastMotion);
-						long maxExtra = (long)this->encoderSteps * 8;
-						if (extra > maxExtra) extra = maxExtra;
-						if (currentDirection > 0) this->encoder0Pos += extra;
-						else this->encoder0Pos -= extra;
+						if (currentDirection > 0)
+						{
+							this->encoder0Pos += rotaryAccelerationCoef / millisAfterLastMotion;
+						}
+						else
+						{
+							this->encoder0Pos -= rotaryAccelerationCoef / millisAfterLastMotion;
+						}
 					}
 				}
 				this->lastMovementAt = now;
@@ -94,9 +82,6 @@ void IRAM_ATTR yoEncoder::readEncoder_ISR()
 yoEncoder::yoEncoder(uint8_t encoder_APin, uint8_t encoder_BPin, uint8_t encoderSteps, bool internalPullup)
 {
 	this->old_AB = 0;
-	this->lastIsrUs = 0;
-	this->lastState2b = 0xFF;
-	this->debounceUs = YOENCODER_DEBOUNCE_US;
 
 	this->encoderAPin = encoder_APin;
 	this->encoderBPin = encoder_BPin;
@@ -116,10 +101,7 @@ void yoEncoder::setBoundaries(long minEncoderValue, long maxEncoderValue, bool c
 
 long yoEncoder::readEncoder()
 {
-	portENTER_CRITICAL(&(this->mux));
-	long p = this->encoder0Pos;
-	portEXIT_CRITICAL(&(this->mux));
-	return (p / this->encoderSteps);
+	return (this->encoder0Pos / this->encoderSteps);
 }
 
 void yoEncoder::setEncoderValue(long newValue)
@@ -139,8 +121,8 @@ long yoEncoder::encoderChanged()
 
 void yoEncoder::setup(void (*ISR_callback)(void))
 {
-	attachInterrupt(this->encoderAPin, ISR_callback, CHANGE);
-	attachInterrupt(this->encoderBPin, ISR_callback, CHANGE);
+	attachInterrupt(digitalPinToInterrupt(this->encoderAPin), ISR_callback, CHANGE);
+	attachInterrupt(digitalPinToInterrupt(this->encoderBPin), ISR_callback, CHANGE);
 }
 
 void yoEncoder::begin()
